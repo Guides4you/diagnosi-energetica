@@ -130,6 +130,16 @@ def calcola_bilancio():
 
 # Sidebar - Navigazione
 st.sidebar.title("⚡ Diagnosi Energetica")
+
+# Anno di riferimento sempre visibile
+st.sidebar.selectbox(
+    "📅 Anno di riferimento",
+    options=list(range(2015, datetime.now().year + 1)),
+    index=list(range(2015, datetime.now().year + 1)).index(st.session_state.anagrafica['anno_rif']),
+    key="anno_sidebar",
+    on_change=lambda: st.session_state.anagrafica.update({'anno_rif': st.session_state.anno_sidebar})
+)
+
 st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
