@@ -13,6 +13,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 import os
 import json
+import io
 
 # Configurazione pagina
 st.set_page_config(
@@ -33,16 +34,16 @@ CO2_GASOLIO = 2.650  # kg/litro
 MESI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
         "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
 
-# Inizializzazione session state
+# Inizializzazione session state con dati fittizi di esempio
 if 'anagrafica' not in st.session_state:
     st.session_state.anagrafica = {
-        'ragione_sociale': '',
-        'piva': '',
-        'indirizzo': '',
-        'citta': '',
-        'cap': '',
-        'provincia': '',
-        'ateco': '',
+        'ragione_sociale': 'Industria Esempio S.r.l.',
+        'piva': '01234567890',
+        'indirizzo': 'Via Roma 42',
+        'citta': 'Milano',
+        'cap': '20100',
+        'provincia': 'MI',
+        'ateco': '25.11.00',
         'anno_rif': datetime.now().year - 1,
         'giorni_lav': 250,
         'turni': 1,
@@ -52,42 +53,75 @@ if 'anagrafica' not in st.session_state:
 if 'consumi_ee' not in st.session_state:
     st.session_state.consumi_ee = pd.DataFrame({
         'Mese': MESI,
-        'kWh': [0.0] * 12,
-        'Costo (€)': [0.0] * 12,
+        'kWh': [12500.0, 11800.0, 13200.0, 14500.0, 16000.0, 18500.0,
+                19200.0, 17800.0, 15600.0, 14200.0, 13000.0, 12700.0],
+        'Costo (€)': [4375.0, 4130.0, 4620.0, 5075.0, 5600.0, 6475.0,
+                      6720.0, 6230.0, 5460.0, 4970.0, 4550.0, 4445.0],
     })
 
 if 'consumi_gas' not in st.session_state:
     st.session_state.consumi_gas = pd.DataFrame({
         'Mese': MESI,
-        'Smc': [0.0] * 12,
-        'Costo (€)': [0.0] * 12,
+        'Smc': [3500.0, 3200.0, 2800.0, 1500.0, 800.0, 400.0,
+                300.0, 300.0, 600.0, 1200.0, 2500.0, 3400.0],
+        'Costo (€)': [3500.0, 3200.0, 2800.0, 1500.0, 800.0, 400.0,
+                      300.0, 300.0, 600.0, 1200.0, 2500.0, 3400.0],
     })
 
 if 'consumi_gasolio' not in st.session_state:
     st.session_state.consumi_gasolio = pd.DataFrame({
         'Mese': MESI,
-        'Litri': [0.0] * 12,
-        'Costo (€)': [0.0] * 12,
+        'Litri': [500.0, 450.0, 400.0, 200.0, 100.0, 50.0,
+                  50.0, 50.0, 100.0, 250.0, 400.0, 500.0],
+        'Costo (€)': [750.0, 675.0, 600.0, 300.0, 150.0, 75.0,
+                      75.0, 75.0, 150.0, 375.0, 600.0, 750.0],
     })
 
 if 'bilancio' not in st.session_state:
     st.session_state.bilancio = pd.DataFrame({
         'Categoria': ['ATTIVITA PRINCIPALI'] * 3 + ['SERVIZI AUSILIARI'] * 2 + ['SERVIZI GENERALI'] * 2,
-        'Descrizione': ['Reparto 1', 'Reparto 2', 'Reparto 3', 'Compressore', 'Altro', 'Illuminazione', 'Clima'],
-        'Potenza (kW)': [0.0] * 7,
-        'Ore/giorno': [8.0] * 7,
-        'Giorni/anno': [250] * 7,
-        'Fattore carico': [0.5] * 7,
+        'Descrizione': ['Linea produzione 1', 'Linea produzione 2', 'Magazzino', 'Compressore', 'Pompe', 'Illuminazione', 'Climatizzazione'],
+        'Potenza (kW)': [45.0, 30.0, 15.0, 22.0, 7.5, 12.0, 35.0],
+        'Ore/giorno': [8.0, 8.0, 8.0, 8.0, 6.0, 10.0, 8.0],
+        'Giorni/anno': [250, 250, 250, 250, 250, 300, 200],
+        'Fattore carico': [0.70, 0.65, 0.40, 0.60, 0.50, 0.80, 0.55],
     })
 
 if 'interventi' not in st.session_state:
-    st.session_state.interventi = []
+    st.session_state.interventi = [
+        {
+            'nome': 'Sostituzione illuminazione con LED',
+            'vettore': 'Energia Elettrica',
+            'costo_inv': 15000.0,
+            'costo_man': 200.0,
+            'risparmio': 18000.0,
+            'risparmio_euro': 6100.0,
+            'vita_utile': 15,
+            'tasso': 0.04,
+            'payback': 2.5,
+            'van': 52800.0,
+            'note': 'Sostituzione corpi illuminanti con LED ad alta efficienza',
+        },
+        {
+            'nome': 'Installazione inverter compressore',
+            'vettore': 'Energia Elettrica',
+            'costo_inv': 8000.0,
+            'costo_man': 100.0,
+            'risparmio': 8800.0,
+            'risparmio_euro': 2980.0,
+            'vita_utile': 10,
+            'tasso': 0.04,
+            'payback': 2.7,
+            'van': 16160.0,
+            'note': 'Inverter su compressore aria compressa da 22 kW',
+        },
+    ]
 
 if 'fotovoltaico' not in st.session_state:
     st.session_state.fotovoltaico = {
-        'potenza_kwp': 0.0,
-        'anno_installazione': 0,
-        'produzione_annua': 0.0,
+        'potenza_kwp': 50.0,
+        'anno_installazione': 2022,
+        'produzione_annua': 57500.0,
         'autoconsumo_perc': 70,
     }
 
@@ -660,13 +694,15 @@ elif menu == "📄 Genera Report":
     st.markdown("---")
 
     if has_anagrafica and has_consumi:
+        nome_azienda = st.session_state.anagrafica['ragione_sociale'].replace(' ', '_').replace('.', '')
+
         col1, col2 = st.columns(2)
 
+        # --- GENERA EXCEL ---
         with col1:
             if st.button("📊 Genera Excel", use_container_width=True):
-                # Genera file Excel
                 from openpyxl import Workbook
-                from openpyxl.styles import Font, PatternFill
+                from openpyxl.styles import Font
 
                 wb = Workbook()
 
@@ -743,24 +779,18 @@ elif menu == "📄 Genera Report":
                         ws_int[f'D{i+2}'] = interv['payback']
                         ws_int[f'E{i+2}'] = interv['van']
 
-                # Salva
-                nome_azienda = st.session_state.anagrafica['ragione_sociale'].replace(' ', '_').replace('.', '')
-                filename = f"DIAGNOSI_{nome_azienda}_{st.session_state.anagrafica['anno_rif']}.xlsx"
-                wb.save(filename)
+                # Salva in memoria (BytesIO)
+                buffer_excel = io.BytesIO()
+                wb.save(buffer_excel)
+                buffer_excel.seek(0)
 
-                st.success(f"✓ File Excel generato: {filename}")
+                st.session_state.excel_data = buffer_excel.getvalue()
+                st.session_state.excel_filename = f"DIAGNOSI_{nome_azienda}_{st.session_state.anagrafica['anno_rif']}.xlsx"
+                st.success("✓ File Excel generato!")
 
-                with open(filename, "rb") as f:
-                    st.download_button(
-                        label="⬇️ Scarica Excel",
-                        data=f,
-                        file_name=filename,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-
+        # --- GENERA PDF ---
         with col2:
             if st.button("📄 Genera PDF", use_container_width=True):
-                # Genera PDF usando reportlab
                 try:
                     from reportlab.lib import colors
                     from reportlab.lib.pagesizes import A4
@@ -769,10 +799,9 @@ elif menu == "📄 Genera Report":
                     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
                     from reportlab.lib.enums import TA_CENTER
 
-                    nome_azienda = st.session_state.anagrafica['ragione_sociale'].replace(' ', '_').replace('.', '')
-                    filename = f"REPORT_DE_{nome_azienda}_{st.session_state.anagrafica['anno_rif']}.pdf"
+                    buffer_pdf = io.BytesIO()
 
-                    doc = SimpleDocTemplate(filename, pagesize=A4,
+                    doc = SimpleDocTemplate(buffer_pdf, pagesize=A4,
                                           rightMargin=2*cm, leftMargin=2*cm,
                                           topMargin=2*cm, bottomMargin=2*cm)
 
@@ -847,19 +876,38 @@ elif menu == "📄 Genera Report":
                         story.append(t)
 
                     doc.build(story)
+                    buffer_pdf.seek(0)
 
-                    st.success(f"✓ File PDF generato: {filename}")
-
-                    with open(filename, "rb") as f:
-                        st.download_button(
-                            label="⬇️ Scarica PDF",
-                            data=f,
-                            file_name=filename,
-                            mime="application/pdf"
-                        )
+                    st.session_state.pdf_data = buffer_pdf.getvalue()
+                    st.session_state.pdf_filename = f"REPORT_DE_{nome_azienda}_{st.session_state.anagrafica['anno_rif']}.pdf"
+                    st.success("✓ File PDF generato!")
 
                 except Exception as e:
                     st.error(f"Errore nella generazione del PDF: {e}")
+
+        # Download buttons persistenti (fuori dal st.button)
+        st.markdown("---")
+        col_dl1, col_dl2 = st.columns(2)
+
+        with col_dl1:
+            if 'excel_data' in st.session_state:
+                st.download_button(
+                    label="⬇️ Scarica Excel",
+                    data=st.session_state.excel_data,
+                    file_name=st.session_state.excel_filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
+
+        with col_dl2:
+            if 'pdf_data' in st.session_state:
+                st.download_button(
+                    label="⬇️ Scarica PDF",
+                    data=st.session_state.pdf_data,
+                    file_name=st.session_state.pdf_filename,
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
     else:
         st.warning("⚠️ Compila almeno l'anagrafica e inserisci i consumi prima di generare il report.")
 
@@ -882,20 +930,18 @@ elif menu == "📄 Genera Report":
             }
 
             nome_azienda = st.session_state.anagrafica['ragione_sociale'].replace(' ', '_').replace('.', '') or "progetto"
-            filename = f"progetto_{nome_azienda}.json"
 
-            with open(filename, 'w') as f:
-                json.dump(progetto, f, indent=2)
+            st.session_state.json_data = json.dumps(progetto, indent=2).encode('utf-8')
+            st.session_state.json_filename = f"progetto_{nome_azienda}.json"
+            st.success("✓ Progetto salvato!")
 
-            st.success(f"✓ Progetto salvato: {filename}")
-
-            with open(filename, "rb") as f:
-                st.download_button(
-                    label="⬇️ Scarica progetto",
-                    data=f,
-                    file_name=filename,
-                    mime="application/json"
-                )
+        if 'json_data' in st.session_state:
+            st.download_button(
+                label="⬇️ Scarica progetto",
+                data=st.session_state.json_data,
+                file_name=st.session_state.json_filename,
+                mime="application/json"
+            )
 
     with col2:
         uploaded_file = st.file_uploader("Carica progetto (.json)", type="json")
