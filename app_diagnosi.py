@@ -34,96 +34,156 @@ CO2_GASOLIO = 2.650  # kg/litro
 MESI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
         "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
 
-# Inizializzazione session state con dati fittizi di esempio
+# Modalità test: ?test=true nell'URL carica dati fittizi
+MODO_TEST = st.query_params.get("test", "").lower() == "true"
+
+# Inizializzazione session state
 if 'anagrafica' not in st.session_state:
-    st.session_state.anagrafica = {
-        'ragione_sociale': 'Industria Esempio S.r.l.',
-        'piva': '01234567890',
-        'indirizzo': 'Via Roma 42',
-        'citta': 'Milano',
-        'cap': '20100',
-        'provincia': 'MI',
-        'ateco': '25.11.00',
-        'anno_rif': datetime.now().year - 1,
-        'giorni_lav': 250,
-        'turni': 1,
-        'ore_turno': 8,
-    }
+    if MODO_TEST:
+        st.session_state.anagrafica = {
+            'ragione_sociale': 'Industria Esempio S.r.l.',
+            'piva': '01234567890',
+            'indirizzo': 'Via Roma 42',
+            'citta': 'Milano',
+            'cap': '20100',
+            'provincia': 'MI',
+            'ateco': '25.11.00',
+            'anno_rif': datetime.now().year - 1,
+            'giorni_lav': 250,
+            'turni': 1,
+            'ore_turno': 8,
+        }
+    else:
+        st.session_state.anagrafica = {
+            'ragione_sociale': '',
+            'piva': '',
+            'indirizzo': '',
+            'citta': '',
+            'cap': '',
+            'provincia': '',
+            'ateco': '',
+            'anno_rif': datetime.now().year - 1,
+            'giorni_lav': 250,
+            'turni': 1,
+            'ore_turno': 8,
+        }
 
 if 'consumi_ee' not in st.session_state:
-    st.session_state.consumi_ee = pd.DataFrame({
-        'Mese': MESI,
-        'kWh': [12500.0, 11800.0, 13200.0, 14500.0, 16000.0, 18500.0,
-                19200.0, 17800.0, 15600.0, 14200.0, 13000.0, 12700.0],
-        'Costo (€)': [4375.0, 4130.0, 4620.0, 5075.0, 5600.0, 6475.0,
-                      6720.0, 6230.0, 5460.0, 4970.0, 4550.0, 4445.0],
-    })
+    if MODO_TEST:
+        st.session_state.consumi_ee = pd.DataFrame({
+            'Mese': MESI,
+            'kWh': [12500.0, 11800.0, 13200.0, 14500.0, 16000.0, 18500.0,
+                    19200.0, 17800.0, 15600.0, 14200.0, 13000.0, 12700.0],
+            'Costo (€)': [4375.0, 4130.0, 4620.0, 5075.0, 5600.0, 6475.0,
+                          6720.0, 6230.0, 5460.0, 4970.0, 4550.0, 4445.0],
+        })
+    else:
+        st.session_state.consumi_ee = pd.DataFrame({
+            'Mese': MESI,
+            'kWh': [0.0] * 12,
+            'Costo (€)': [0.0] * 12,
+        })
 
 if 'consumi_gas' not in st.session_state:
-    st.session_state.consumi_gas = pd.DataFrame({
-        'Mese': MESI,
-        'Smc': [3500.0, 3200.0, 2800.0, 1500.0, 800.0, 400.0,
-                300.0, 300.0, 600.0, 1200.0, 2500.0, 3400.0],
-        'Costo (€)': [3500.0, 3200.0, 2800.0, 1500.0, 800.0, 400.0,
-                      300.0, 300.0, 600.0, 1200.0, 2500.0, 3400.0],
-    })
+    if MODO_TEST:
+        st.session_state.consumi_gas = pd.DataFrame({
+            'Mese': MESI,
+            'Smc': [3500.0, 3200.0, 2800.0, 1500.0, 800.0, 400.0,
+                    300.0, 300.0, 600.0, 1200.0, 2500.0, 3400.0],
+            'Costo (€)': [3500.0, 3200.0, 2800.0, 1500.0, 800.0, 400.0,
+                          300.0, 300.0, 600.0, 1200.0, 2500.0, 3400.0],
+        })
+    else:
+        st.session_state.consumi_gas = pd.DataFrame({
+            'Mese': MESI,
+            'Smc': [0.0] * 12,
+            'Costo (€)': [0.0] * 12,
+        })
 
 if 'consumi_gasolio' not in st.session_state:
-    st.session_state.consumi_gasolio = pd.DataFrame({
-        'Mese': MESI,
-        'Litri': [500.0, 450.0, 400.0, 200.0, 100.0, 50.0,
-                  50.0, 50.0, 100.0, 250.0, 400.0, 500.0],
-        'Costo (€)': [750.0, 675.0, 600.0, 300.0, 150.0, 75.0,
-                      75.0, 75.0, 150.0, 375.0, 600.0, 750.0],
-    })
+    if MODO_TEST:
+        st.session_state.consumi_gasolio = pd.DataFrame({
+            'Mese': MESI,
+            'Litri': [500.0, 450.0, 400.0, 200.0, 100.0, 50.0,
+                      50.0, 50.0, 100.0, 250.0, 400.0, 500.0],
+            'Costo (€)': [750.0, 675.0, 600.0, 300.0, 150.0, 75.0,
+                          75.0, 75.0, 150.0, 375.0, 600.0, 750.0],
+        })
+    else:
+        st.session_state.consumi_gasolio = pd.DataFrame({
+            'Mese': MESI,
+            'Litri': [0.0] * 12,
+            'Costo (€)': [0.0] * 12,
+        })
 
 if 'bilancio' not in st.session_state:
-    st.session_state.bilancio = pd.DataFrame({
-        'Categoria': ['ATTIVITA PRINCIPALI'] * 3 + ['SERVIZI AUSILIARI'] * 2 + ['SERVIZI GENERALI'] * 2,
-        'Descrizione': ['Linea produzione 1', 'Linea produzione 2', 'Magazzino', 'Compressore', 'Pompe', 'Illuminazione', 'Climatizzazione'],
-        'Potenza (kW)': [45.0, 30.0, 15.0, 22.0, 7.5, 12.0, 35.0],
-        'Ore/giorno': [8.0, 8.0, 8.0, 8.0, 6.0, 10.0, 8.0],
-        'Giorni/anno': [250, 250, 250, 250, 250, 300, 200],
-        'Fattore carico': [0.70, 0.65, 0.40, 0.60, 0.50, 0.80, 0.55],
-    })
+    if MODO_TEST:
+        st.session_state.bilancio = pd.DataFrame({
+            'Categoria': ['ATTIVITA PRINCIPALI'] * 3 + ['SERVIZI AUSILIARI'] * 2 + ['SERVIZI GENERALI'] * 2,
+            'Descrizione': ['Linea produzione 1', 'Linea produzione 2', 'Magazzino', 'Compressore', 'Pompe', 'Illuminazione', 'Climatizzazione'],
+            'Potenza (kW)': [45.0, 30.0, 15.0, 22.0, 7.5, 12.0, 35.0],
+            'Ore/giorno': [8.0, 8.0, 8.0, 8.0, 6.0, 10.0, 8.0],
+            'Giorni/anno': [250, 250, 250, 250, 250, 300, 200],
+            'Fattore carico': [0.70, 0.65, 0.40, 0.60, 0.50, 0.80, 0.55],
+        })
+    else:
+        st.session_state.bilancio = pd.DataFrame({
+            'Categoria': ['ATTIVITA PRINCIPALI'] * 3 + ['SERVIZI AUSILIARI'] * 2 + ['SERVIZI GENERALI'] * 2,
+            'Descrizione': ['Reparto 1', 'Reparto 2', 'Reparto 3', 'Compressore', 'Altro', 'Illuminazione', 'Clima'],
+            'Potenza (kW)': [0.0] * 7,
+            'Ore/giorno': [8.0] * 7,
+            'Giorni/anno': [250] * 7,
+            'Fattore carico': [0.5] * 7,
+        })
 
 if 'interventi' not in st.session_state:
-    st.session_state.interventi = [
-        {
-            'nome': 'Sostituzione illuminazione con LED',
-            'vettore': 'Energia Elettrica',
-            'costo_inv': 15000.0,
-            'costo_man': 200.0,
-            'risparmio': 18000.0,
-            'risparmio_euro': 6100.0,
-            'vita_utile': 15,
-            'tasso': 0.04,
-            'payback': 2.5,
-            'van': 52800.0,
-            'note': 'Sostituzione corpi illuminanti con LED ad alta efficienza',
-        },
-        {
-            'nome': 'Installazione inverter compressore',
-            'vettore': 'Energia Elettrica',
-            'costo_inv': 8000.0,
-            'costo_man': 100.0,
-            'risparmio': 8800.0,
-            'risparmio_euro': 2980.0,
-            'vita_utile': 10,
-            'tasso': 0.04,
-            'payback': 2.7,
-            'van': 16160.0,
-            'note': 'Inverter su compressore aria compressa da 22 kW',
-        },
-    ]
+    if MODO_TEST:
+        st.session_state.interventi = [
+            {
+                'nome': 'Sostituzione illuminazione con LED',
+                'vettore': 'Energia Elettrica',
+                'costo_inv': 15000.0,
+                'costo_man': 200.0,
+                'risparmio': 18000.0,
+                'risparmio_euro': 6100.0,
+                'vita_utile': 15,
+                'tasso': 0.04,
+                'payback': 2.5,
+                'van': 52800.0,
+                'note': 'Sostituzione corpi illuminanti con LED ad alta efficienza',
+            },
+            {
+                'nome': 'Installazione inverter compressore',
+                'vettore': 'Energia Elettrica',
+                'costo_inv': 8000.0,
+                'costo_man': 100.0,
+                'risparmio': 8800.0,
+                'risparmio_euro': 2980.0,
+                'vita_utile': 10,
+                'tasso': 0.04,
+                'payback': 2.7,
+                'van': 16160.0,
+                'note': 'Inverter su compressore aria compressa da 22 kW',
+            },
+        ]
+    else:
+        st.session_state.interventi = []
 
 if 'fotovoltaico' not in st.session_state:
-    st.session_state.fotovoltaico = {
-        'potenza_kwp': 50.0,
-        'anno_installazione': 2022,
-        'produzione_annua': 57500.0,
-        'autoconsumo_perc': 70,
-    }
+    if MODO_TEST:
+        st.session_state.fotovoltaico = {
+            'potenza_kwp': 50.0,
+            'anno_installazione': 2022,
+            'produzione_annua': 57500.0,
+            'autoconsumo_perc': 70,
+        }
+    else:
+        st.session_state.fotovoltaico = {
+            'potenza_kwp': 0.0,
+            'anno_installazione': 0,
+            'produzione_annua': 0.0,
+            'autoconsumo_perc': 70,
+        }
 
 
 def calcola_totali():
