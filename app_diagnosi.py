@@ -294,66 +294,45 @@ if menu == "🏠 Home":
 elif menu == "🏢 Anagrafica":
     st.title("🏢 Dati Anagrafici")
 
+    # Init chiavi widget dai valori del dict (solo al primo accesso)
+    for k in ['ragione_sociale', 'piva', 'indirizzo', 'citta', 'cap', 'provincia', 'ateco',
+              'anno_rif', 'giorni_lav', 'turni', 'ore_turno']:
+        wkey = f"anag_{k}"
+        if wkey not in st.session_state:
+            st.session_state[wkey] = st.session_state.anagrafica.get(k, '' if k in ['ragione_sociale','piva','indirizzo','citta','cap','provincia','ateco'] else 0)
+
     col1, col2 = st.columns(2)
 
     with col1:
-        st.session_state.anagrafica['ragione_sociale'] = st.text_input(
-            "Ragione Sociale *",
-            value=st.session_state.anagrafica['ragione_sociale']
-        )
-        st.session_state.anagrafica['piva'] = st.text_input(
-            "Partita IVA *",
-            value=st.session_state.anagrafica['piva']
-        )
-        st.session_state.anagrafica['indirizzo'] = st.text_input(
-            "Indirizzo",
-            value=st.session_state.anagrafica['indirizzo']
-        )
-        st.session_state.anagrafica['citta'] = st.text_input(
-            "Città",
-            value=st.session_state.anagrafica['citta']
-        )
+        st.text_input("Ragione Sociale *", key="anag_ragione_sociale")
+        st.text_input("Partita IVA *", key="anag_piva")
+        st.text_input("Indirizzo", key="anag_indirizzo")
+        st.text_input("Città", key="anag_citta")
 
     with col2:
-        st.session_state.anagrafica['cap'] = st.text_input(
-            "CAP",
-            value=st.session_state.anagrafica['cap']
-        )
-        st.session_state.anagrafica['provincia'] = st.text_input(
-            "Provincia",
-            value=st.session_state.anagrafica['provincia']
-        )
-        st.session_state.anagrafica['ateco'] = st.text_input(
-            "Codice ATECO",
-            value=st.session_state.anagrafica['ateco']
-        )
-        st.session_state.anagrafica['anno_rif'] = st.number_input(
+        st.text_input("CAP", key="anag_cap")
+        st.text_input("Provincia", key="anag_provincia")
+        st.text_input("Codice ATECO", key="anag_ateco")
+        st.number_input(
             "Anno di riferimento *",
             min_value=2015,
             max_value=datetime.now().year,
-            value=st.session_state.anagrafica['anno_rif']
+            key="anag_anno_rif",
         )
 
     st.markdown("### Regime operativo")
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.session_state.anagrafica['giorni_lav'] = st.number_input(
-            "Giorni lavorativi/anno",
-            min_value=1, max_value=365,
-            value=st.session_state.anagrafica['giorni_lav']
-        )
+        st.number_input("Giorni lavorativi/anno", min_value=1, max_value=365, key="anag_giorni_lav")
     with col2:
-        st.session_state.anagrafica['turni'] = st.number_input(
-            "Numero turni",
-            min_value=1, max_value=3,
-            value=st.session_state.anagrafica['turni']
-        )
+        st.number_input("Numero turni", min_value=1, max_value=3, key="anag_turni")
     with col3:
-        st.session_state.anagrafica['ore_turno'] = st.number_input(
-            "Ore per turno",
-            min_value=1, max_value=12,
-            value=st.session_state.anagrafica['ore_turno']
-        )
+        st.number_input("Ore per turno", min_value=1, max_value=12, key="anag_ore_turno")
+
+    # Sync widget → dict
+    for k in ['ragione_sociale', 'piva', 'indirizzo', 'citta', 'cap', 'provincia', 'ateco',
+              'anno_rif', 'giorni_lav', 'turni', 'ore_turno']:
+        st.session_state.anagrafica[k] = st.session_state[f"anag_{k}"]
 
     if st.session_state.anagrafica['ragione_sociale']:
         st.success(f"✓ Anagrafica salvata per: {st.session_state.anagrafica['ragione_sociale']}")
@@ -457,36 +436,54 @@ elif menu == "☀️ Fotovoltaico":
 
     st.markdown("Inserisci i dati dell'impianto fotovoltaico (se presente).")
 
+    # Init chiavi widget dai valori del dict
+    if 'fv_potenza_kwp' not in st.session_state:
+        st.session_state.fv_potenza_kwp = float(st.session_state.fotovoltaico.get('potenza_kwp', 0.0))
+    if 'fv_anno_installazione' not in st.session_state:
+        anno = st.session_state.fotovoltaico.get('anno_installazione', 0)
+        st.session_state.fv_anno_installazione = int(anno) if anno else datetime.now().year
+    if 'fv_produzione_annua' not in st.session_state:
+        st.session_state.fv_produzione_annua = float(st.session_state.fotovoltaico.get('produzione_annua', 0.0))
+    if 'fv_autoconsumo_perc' not in st.session_state:
+        st.session_state.fv_autoconsumo_perc = int(st.session_state.fotovoltaico.get('autoconsumo_perc', 70))
+
     col1, col2 = st.columns(2)
     with col1:
-        st.session_state.fotovoltaico['potenza_kwp'] = st.number_input(
+        st.number_input(
             "Potenza installata (kWp)",
             min_value=0.0, max_value=10000.0, step=0.1,
-            value=st.session_state.fotovoltaico['potenza_kwp']
+            key="fv_potenza_kwp",
         )
-        st.session_state.fotovoltaico['anno_installazione'] = st.number_input(
+        st.number_input(
             "Anno installazione",
             min_value=2000, max_value=datetime.now().year,
-            value=st.session_state.fotovoltaico['anno_installazione'] or datetime.now().year
+            key="fv_anno_installazione",
         )
 
     with col2:
-        st.session_state.fotovoltaico['produzione_annua'] = st.number_input(
+        st.number_input(
             "Produzione annua (kWh)",
             min_value=0.0, step=100.0,
-            value=st.session_state.fotovoltaico['produzione_annua']
+            key="fv_produzione_annua",
         )
-        st.session_state.fotovoltaico['autoconsumo_perc'] = st.slider(
+        st.slider(
             "Percentuale autoconsumo (%)",
             min_value=0, max_value=100,
-            value=st.session_state.fotovoltaico['autoconsumo_perc']
+            key="fv_autoconsumo_perc",
         )
+
+    # Sync widget → dict
+    st.session_state.fotovoltaico['potenza_kwp'] = st.session_state.fv_potenza_kwp
+    st.session_state.fotovoltaico['anno_installazione'] = st.session_state.fv_anno_installazione
+    st.session_state.fotovoltaico['produzione_annua'] = st.session_state.fv_produzione_annua
+    st.session_state.fotovoltaico['autoconsumo_perc'] = st.session_state.fv_autoconsumo_perc
 
     # Stima produzione se non inserita
     if st.session_state.fotovoltaico['potenza_kwp'] > 0 and st.session_state.fotovoltaico['produzione_annua'] == 0:
         stima = st.session_state.fotovoltaico['potenza_kwp'] * 1150  # Nord Italia
         st.info(f"💡 Produzione stimata (Nord Italia): {stima:,.0f} kWh/anno")
         if st.button("Usa stima"):
+            st.session_state.fv_produzione_annua = stima
             st.session_state.fotovoltaico['produzione_annua'] = stima
             st.rerun()
 
@@ -570,15 +567,15 @@ elif menu == "🔧 Interventi":
         col1, col2 = st.columns(2)
 
         with col1:
-            nome = st.text_input("Nome intervento")
-            vettore = st.selectbox("Vettore risparmiato", ["Energia Elettrica", "Gas Naturale", "Gasolio"])
-            costo_inv = st.number_input("Costo investimento (€)", min_value=0.0, step=100.0)
-            costo_man = st.number_input("Costo manutenzione annuo (€)", min_value=0.0, step=10.0)
+            nome = st.text_input("Nome intervento", key="int_nome")
+            vettore = st.selectbox("Vettore risparmiato", ["Energia Elettrica", "Gas Naturale", "Gasolio"], key="int_vettore")
+            costo_inv = st.number_input("Costo investimento (€)", min_value=0.0, step=100.0, key="int_costo_inv")
+            costo_man = st.number_input("Costo manutenzione annuo (€)", min_value=0.0, step=10.0, key="int_costo_man")
 
         with col2:
-            risparmio = st.number_input("Risparmio energetico annuo (kWh/Smc/l)", min_value=0.0, step=100.0)
-            vita_utile = st.number_input("Vita utile (anni)", min_value=1, max_value=30, value=10)
-            tasso = st.number_input("Tasso attualizzazione (%)", min_value=0.0, max_value=20.0, value=4.0) / 100
+            risparmio = st.number_input("Risparmio energetico annuo (kWh/Smc/l)", min_value=0.0, step=100.0, key="int_risparmio")
+            vita_utile = st.number_input("Vita utile (anni)", min_value=1, max_value=30, value=10, key="int_vita_utile")
+            tasso = st.number_input("Tasso attualizzazione (%)", min_value=0.0, max_value=20.0, value=4.0, key="int_tasso") / 100
 
             # Costo medio vettore
             if vettore == "Energia Elettrica":
@@ -596,7 +593,7 @@ elif menu == "🔧 Interventi":
 
             st.info(f"Costo medio {vettore}: € {costo_medio:.4f}")
 
-        note = st.text_area("Note")
+        note = st.text_area("Note", key="int_note")
 
         if st.button("Aggiungi intervento"):
             if nome and costo_inv > 0 and risparmio > 0:
@@ -624,6 +621,10 @@ elif menu == "🔧 Interventi":
                 }
                 st.session_state.interventi.append(intervento)
                 st.success(f"✓ Intervento '{nome}' aggiunto!")
+                # Reset form
+                for k in ['int_nome', 'int_costo_inv', 'int_costo_man', 'int_risparmio', 'int_note']:
+                    if k in st.session_state:
+                        del st.session_state[k]
                 st.rerun()
             else:
                 st.error("Compila tutti i campi obbligatori (nome, costo, risparmio)")
@@ -1015,6 +1016,11 @@ elif menu == "📄 Genera Report":
             st.session_state.bilancio = pd.DataFrame(progetto['bilancio'])
             st.session_state.interventi = progetto['interventi']
             st.session_state.fotovoltaico = progetto['fotovoltaico']
+
+            # Reset chiavi widget così verranno reinizializzate dai nuovi dati caricati
+            for k in list(st.session_state.keys()):
+                if isinstance(k, str) and (k.startswith('anag_') or k.startswith('fv_') or k.startswith('int_') or k == 'anno_sidebar'):
+                    del st.session_state[k]
 
             st.success("✓ Progetto caricato!")
             st.rerun()
