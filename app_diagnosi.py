@@ -1089,33 +1089,54 @@ elif menu == "📄 Genera Report":
                     ws_ee[f'B{i+2}'] = row['kWh']
                     ws_ee[f'C{i+2}'] = row['Costo (€)']
 
-                # Foglio BILANCIO
+                # Foglio BILANCIO (esteso multi-vettore)
                 ws_bil = wb.create_sheet("BILANCIO")
                 df_bil = calcola_bilancio()
-                ws_bil['A1'] = "Categoria"
-                ws_bil['B1'] = "Descrizione"
-                ws_bil['C1'] = "kWh/anno"
-                ws_bil['D1'] = "TEP"
+                bil_cols = ["Categoria", "Descrizione", "Vettore", "Potenza (kW)", "Ore/giorno", "Giorni/anno", "Fattore carico", "C.C.", "kWh/anno", "Consumo", "Unità", "TEP", "CO2 (ton)"]
+                for j, col in enumerate(bil_cols):
+                    ws_bil.cell(row=1, column=j+1, value=col).font = Font(bold=True)
                 for i, row in df_bil.iterrows():
-                    ws_bil[f'A{i+2}'] = row['Categoria']
-                    ws_bil[f'B{i+2}'] = row['Descrizione']
-                    ws_bil[f'C{i+2}'] = row['kWh/anno']
-                    ws_bil[f'D{i+2}'] = row['TEP']
+                    for j, col in enumerate(bil_cols):
+                        ws_bil.cell(row=i+2, column=j+1, value=row.get(col))
+
+                # Foglio DRIVER + INDICI
+                if not st.session_state.driver_energetici.empty:
+                    ws_drv = wb.create_sheet("DRIVER")
+                    drv_cols = list(st.session_state.driver_energetici.columns)
+                    for j, col in enumerate(drv_cols):
+                        ws_drv.cell(row=1, column=j+1, value=col).font = Font(bold=True)
+                    for i, row in st.session_state.driver_energetici.iterrows():
+                        for j, col in enumerate(drv_cols):
+                            ws_drv.cell(row=i+2, column=j+1, value=row.get(col))
+
+                if 'indici_calcolati' in st.session_state and not st.session_state.indici_calcolati.empty:
+                    ws_idx = wb.create_sheet("INDICI")
+                    idx_df = st.session_state.indici_calcolati
+                    idx_cols = ["Categoria", "Attività", "Vettore", "Indice", "Unità indice", "Calcolo"]
+                    for j, col in enumerate(idx_cols):
+                        ws_idx.cell(row=1, column=j+1, value=col).font = Font(bold=True)
+                    for i, row in idx_df.iterrows():
+                        for j, col in enumerate(idx_cols):
+                            ws_idx.cell(row=i+2, column=j+1, value=row.get(col))
 
                 # Foglio INTERVENTI
                 if st.session_state.interventi:
                     ws_int = wb.create_sheet("INTERVENTI")
-                    ws_int['A1'] = "Intervento"
-                    ws_int['B1'] = "Investimento (€)"
-                    ws_int['C1'] = "Risparmio (€/anno)"
-                    ws_int['D1'] = "Payback (anni)"
-                    ws_int['E1'] = "VAN (€)"
+                    int_cols = ["Intervento", "Vettore", "Investimento (€)", "Manutenzione/anno (€)", "Risparmio energia/anno", "Risparmio €/anno", "Vita utile (anni)", "Tasso (%)", "Payback (anni)", "VAN (€)", "Note"]
+                    for j, col in enumerate(int_cols):
+                        ws_int.cell(row=1, column=j+1, value=col).font = Font(bold=True)
                     for i, interv in enumerate(st.session_state.interventi):
-                        ws_int[f'A{i+2}'] = interv['nome']
-                        ws_int[f'B{i+2}'] = interv['costo_inv']
-                        ws_int[f'C{i+2}'] = interv['risparmio_euro']
-                        ws_int[f'D{i+2}'] = interv['payback']
-                        ws_int[f'E{i+2}'] = interv['van']
+                        ws_int.cell(row=i+2, column=1, value=interv['nome'])
+                        ws_int.cell(row=i+2, column=2, value=interv['vettore'])
+                        ws_int.cell(row=i+2, column=3, value=interv['costo_inv'])
+                        ws_int.cell(row=i+2, column=4, value=interv['costo_man'])
+                        ws_int.cell(row=i+2, column=5, value=interv['risparmio'])
+                        ws_int.cell(row=i+2, column=6, value=interv['risparmio_euro'])
+                        ws_int.cell(row=i+2, column=7, value=interv['vita_utile'])
+                        ws_int.cell(row=i+2, column=8, value=interv['tasso'] * 100)
+                        ws_int.cell(row=i+2, column=9, value=interv['payback'])
+                        ws_int.cell(row=i+2, column=10, value=interv['van'])
+                        ws_int.cell(row=i+2, column=11, value=interv.get('note', ''))
 
                 # Salva in memoria (BytesIO)
                 buffer_excel = io.BytesIO()
@@ -1135,10 +1156,9 @@ elif menu == "📄 Genera Report":
                     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
                     from reportlab.lib.units import cm
                     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
-                    from reportlab.lib.enums import TA_CENTER
+                    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 
                     buffer_pdf = io.BytesIO()
-
                     doc = SimpleDocTemplate(buffer_pdf, pagesize=A4,
                                           rightMargin=2*cm, leftMargin=2*cm,
                                           topMargin=2*cm, bottomMargin=2*cm)
@@ -1147,77 +1167,272 @@ elif menu == "📄 Genera Report":
                     styles.add(ParagraphStyle(name='TitoloReport', parent=styles['Title'],
                                             fontSize=20, textColor=colors.HexColor('#1a5276'),
                                             alignment=TA_CENTER))
+                    styles.add(ParagraphStyle(name='Body', parent=styles['Normal'],
+                                            fontSize=10, alignment=TA_JUSTIFY, spaceAfter=6))
+                    styles.add(ParagraphStyle(name='SezTitolo', parent=styles['Heading1'],
+                                            fontSize=14, textColor=colors.HexColor('#1a5276'),
+                                            spaceAfter=12, spaceBefore=6))
 
-                    story = []
+                    PRIMARY = colors.HexColor('#2874a6')
+                    LIGHT = colors.HexColor('#d5e8d4')
 
-                    # Copertina
-                    story.append(Spacer(1, 3*cm))
-                    story.append(Paragraph("DIAGNOSI ENERGETICA", styles['TitoloReport']))
-                    story.append(Paragraph("ai sensi del D.Lgs. 102/2014", styles['Heading2']))
-                    story.append(Spacer(1, 2*cm))
-                    story.append(Paragraph(f"<b>{st.session_state.anagrafica['ragione_sociale']}</b>", styles['TitoloReport']))
-                    story.append(Paragraph(f"{st.session_state.anagrafica['indirizzo']}", styles['Normal']))
-                    story.append(Paragraph(f"{st.session_state.anagrafica['cap']} {st.session_state.anagrafica['citta']} ({st.session_state.anagrafica['provincia']})", styles['Normal']))
-                    story.append(Spacer(1, 2*cm))
-                    story.append(Paragraph(f"Anno di riferimento: {st.session_state.anagrafica['anno_rif']}", styles['Heading2']))
-                    story.append(PageBreak())
-
-                    # Sintesi
-                    story.append(Paragraph("QUADRO DI SINTESI ENERGETICA", styles['Heading1']))
-
-                    data = [
-                        ['Vettore', 'Consumo', 'TEP', 'Costo (€)'],
-                        ['Energia Elettrica', f"{totali['ee_kwh']:,.0f} kWh", f"{totali['ee_tep']:.2f}", f"{totali['ee_costo']:,.0f}"],
-                        ['Gas Naturale', f"{totali['gas_smc']:,.0f} Smc", f"{totali['gas_tep']:.2f}", f"{totali['gas_costo']:,.0f}"],
-                        ['Gasolio', f"{totali['gasolio_l']:,.0f} litri", f"{totali['gasolio_tep']:.2f}", f"{totali['gasolio_costo']:,.0f}"],
-                        ['TOTALE', '', f"{totali['tep_totale']:.2f}", f"{totali['costo_totale']:,.0f}"],
-                    ]
-
-                    t = Table(data, colWidths=[5*cm, 4*cm, 3*cm, 3*cm])
-                    t.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2874a6')),
-                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#d5e8d4')),
-                    ]))
-                    story.append(t)
-                    story.append(Spacer(1, 1*cm))
-
-                    # Emissioni
-                    story.append(Paragraph("EMISSIONI CO2", styles['Heading2']))
-                    story.append(Paragraph(f"Emissioni totali: {totali['co2_totale']:.2f} tonnellate/anno", styles['Normal']))
-
-                    # Interventi
-                    if st.session_state.interventi:
-                        story.append(PageBreak())
-                        story.append(Paragraph("INTERVENTI DI EFFICIENTAMENTO", styles['Heading1']))
-
-                        data_int = [['Intervento', 'Investimento', 'Risparmio/anno', 'Payback', 'VAN']]
-                        for interv in st.session_state.interventi:
-                            data_int.append([
-                                interv['nome'][:30],
-                                f"€ {interv['costo_inv']:,.0f}",
-                                f"€ {interv['risparmio_euro']:,.0f}",
-                                f"{interv['payback']:.1f} anni",
-                                f"€ {interv['van']:,.0f}"
-                            ])
-
-                        t = Table(data_int, colWidths=[5*cm, 2.5*cm, 2.5*cm, 2*cm, 2.5*cm])
-                        t.setStyle(TableStyle([
-                            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2874a6')),
+                    def make_table(data, col_widths, total_row=False, font_size=9):
+                        t = Table(data, colWidths=col_widths, repeatRows=1)
+                        style = [
+                            ('BACKGROUND', (0, 0), (-1, 0), PRIMARY),
                             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
                             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                            ('FONTSIZE', (0, 0), (-1, -1), 8),
-                        ]))
-                        story.append(t)
+                            ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
+                            ('FONTSIZE', (0, 0), (-1, -1), font_size),
+                            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f4f6f7')]),
+                        ]
+                        if total_row:
+                            style.append(('BACKGROUND', (0, -1), (-1, -1), LIGHT))
+                            style.append(('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'))
+                        t.setStyle(TableStyle(style))
+                        return t
+
+                    anag = st.session_state.anagrafica
+                    story = []
+
+                    # ===== 1. COPERTINA =====
+                    story.append(Spacer(1, 3*cm))
+                    story.append(Paragraph("DIAGNOSI ENERGETICA", styles['TitoloReport']))
+                    story.append(Paragraph("ai sensi del D.Lgs. 102/2014 — UNI CEI EN 16247", styles['Heading2']))
+                    story.append(Spacer(1, 2*cm))
+                    story.append(Paragraph(f"<b>{anag.get('ragione_sociale','')}</b>", styles['TitoloReport']))
+                    story.append(Paragraph(f"{anag.get('indirizzo','')}", styles['Normal']))
+                    story.append(Paragraph(f"{anag.get('cap','')} {anag.get('citta','')} ({anag.get('provincia','')})", styles['Normal']))
+                    if anag.get('piva'):
+                        story.append(Paragraph(f"P.IVA: {anag.get('piva','')}", styles['Normal']))
+                    if anag.get('ateco'):
+                        story.append(Paragraph(f"Codice ATECO: {anag.get('ateco','')}", styles['Normal']))
+                    story.append(Spacer(1, 2*cm))
+                    story.append(Paragraph(f"Anno di riferimento: <b>{anag.get('anno_rif','')}</b>", styles['Heading2']))
+                    story.append(Spacer(1, 4*cm))
+                    story.append(Paragraph(f"Documento generato il {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
+                    story.append(PageBreak())
+
+                    # ===== 2. ANAGRAFICA =====
+                    story.append(Paragraph("1. DATI ANAGRAFICI E REGIME OPERATIVO", styles['SezTitolo']))
+                    data_an = [
+                        ['Campo', 'Valore'],
+                        ['Ragione Sociale', anag.get('ragione_sociale', '—')],
+                        ['Partita IVA', anag.get('piva', '—')],
+                        ['Sede', f"{anag.get('indirizzo','')}, {anag.get('cap','')} {anag.get('citta','')} ({anag.get('provincia','')})"],
+                        ['Codice ATECO', anag.get('ateco', '—')],
+                        ['Anno riferimento', str(anag.get('anno_rif', ''))],
+                        ['Giorni lavorativi/anno', str(anag.get('giorni_lav', ''))],
+                        ['Numero turni', str(anag.get('turni', ''))],
+                        ['Ore per turno', str(anag.get('ore_turno', ''))],
+                    ]
+                    story.append(make_table(data_an, [5*cm, 11*cm]))
+                    story.append(Spacer(1, 0.8*cm))
+
+                    # ===== 3. VETTORI ENERGETICI =====
+                    story.append(Paragraph("2. QUADRO DEI VETTORI ENERGETICI", styles['SezTitolo']))
+                    data_sint = [
+                        ['Vettore', 'Consumo', 'TEP', 'CO₂ (ton)', 'Costo (€)'],
+                        ['Energia Elettrica', f"{totali['ee_kwh']:,.0f} kWh", f"{totali['ee_tep']:.2f}", f"{totali['ee_co2']:.2f}", f"{totali['ee_costo']:,.0f}"],
+                        ['Gas Naturale', f"{totali['gas_smc']:,.0f} Smc", f"{totali['gas_tep']:.2f}", f"{totali['gas_co2']:.2f}", f"{totali['gas_costo']:,.0f}"],
+                        ['Gasolio', f"{totali['gasolio_l']:,.0f} litri", f"{totali['gasolio_tep']:.2f}", f"{totali['gasolio_co2']:.2f}", f"{totali['gasolio_costo']:,.0f}"],
+                        ['TOTALE', '', f"{totali['tep_totale']:.2f}", f"{totali['co2_totale']:.2f}", f"{totali['costo_totale']:,.0f}"],
+                    ]
+                    story.append(make_table(data_sint, [4.5*cm, 3.5*cm, 2.5*cm, 2.5*cm, 3*cm], total_row=True))
+                    story.append(Spacer(1, 0.6*cm))
+
+                    # Tabelle mensili dettagliate
+                    def _tab_mensile(df_consumi, label_quant, totale_q, totale_c):
+                        rows = [['Mese', label_quant, 'Costo (€)']]
+                        for _, r in df_consumi.iterrows():
+                            rows.append([r['Mese'], f"{r[label_quant]:,.0f}", f"{r['Costo (€)']:,.2f}"])
+                        rows.append(['TOTALE', f"{totale_q:,.0f}", f"{totale_c:,.2f}"])
+                        return make_table(rows, [4*cm, 4*cm, 4*cm], total_row=True, font_size=8)
+
+                    if totali['ee_kwh'] > 0:
+                        story.append(Paragraph("Dettaglio mensile — Energia Elettrica", styles['Heading3']))
+                        story.append(_tab_mensile(st.session_state.consumi_ee, 'kWh', totali['ee_kwh'], totali['ee_costo']))
+                        story.append(Spacer(1, 0.4*cm))
+                    if totali['gas_smc'] > 0:
+                        story.append(Paragraph("Dettaglio mensile — Gas Naturale", styles['Heading3']))
+                        story.append(_tab_mensile(st.session_state.consumi_gas, 'Smc', totali['gas_smc'], totali['gas_costo']))
+                        story.append(Spacer(1, 0.4*cm))
+                    if totali['gasolio_l'] > 0:
+                        story.append(Paragraph("Dettaglio mensile — Gasolio", styles['Heading3']))
+                        story.append(_tab_mensile(st.session_state.consumi_gasolio, 'Litri', totali['gasolio_l'], totali['gasolio_costo']))
+                        story.append(Spacer(1, 0.4*cm))
+
+                    # ===== 4. FOTOVOLTAICO =====
+                    fv = st.session_state.fotovoltaico
+                    if fv.get('potenza_kwp', 0) > 0:
+                        story.append(PageBreak())
+                        story.append(Paragraph("3. IMPIANTO FOTOVOLTAICO", styles['SezTitolo']))
+                        autoconsumo_kwh = fv['produzione_annua'] * fv['autoconsumo_perc'] / 100
+                        immissione_kwh = fv['produzione_annua'] - autoconsumo_kwh
+                        data_fv = [
+                            ['Parametro', 'Valore'],
+                            ['Potenza installata', f"{fv['potenza_kwp']:.2f} kWp"],
+                            ['Anno installazione', str(fv.get('anno_installazione', '—'))],
+                            ['Produzione annua', f"{fv['produzione_annua']:,.0f} kWh"],
+                            ['Autoconsumo', f"{fv['autoconsumo_perc']}% — {autoconsumo_kwh:,.0f} kWh"],
+                            ['Immissione in rete', f"{immissione_kwh:,.0f} kWh"],
+                        ]
+                        story.append(make_table(data_fv, [6*cm, 10*cm]))
+                        story.append(Spacer(1, 0.6*cm))
+
+                    # ===== 5. BILANCIO ENERGETICO =====
+                    df_bil = calcola_bilancio()
+                    if not df_bil.empty and df_bil['kWh/anno'].sum() > 0:
+                        story.append(PageBreak())
+                        story.append(Paragraph("4. BILANCIO ENERGETICO", styles['SezTitolo']))
+
+                        # Dettaglio per area
+                        story.append(Paragraph("Dettaglio per utenza", styles['Heading3']))
+                        data_b = [['Categoria', 'Descrizione', 'Vettore', 'kWh/anno', 'Consumo', 'TEP']]
+                        for _, r in df_bil.iterrows():
+                            data_b.append([
+                                str(r.get('Categoria', '')),
+                                str(r.get('Descrizione', ''))[:25],
+                                str(r.get('Vettore', ''))[:15],
+                                f"{r['kWh/anno']:,.0f}",
+                                f"{r['Consumo']:,.1f} {r['Unità']}",
+                                f"{r['TEP']:.2f}",
+                            ])
+                        story.append(make_table(data_b, [3.5*cm, 3.5*cm, 3*cm, 2.2*cm, 2.5*cm, 1.8*cm], font_size=8))
+                        story.append(Spacer(1, 0.5*cm))
+
+                        # Per categoria
+                        story.append(Paragraph("Riepilogo per categoria", styles['Heading3']))
+                        riep_cat = df_bil.groupby('Categoria').agg({'kWh/anno': 'sum', 'TEP': 'sum'}).reset_index()
+                        rows_c = [['Categoria', 'kWh/anno', 'TEP']]
+                        for _, r in riep_cat.iterrows():
+                            rows_c.append([r['Categoria'], f"{r['kWh/anno']:,.0f}", f"{r['TEP']:.2f}"])
+                        rows_c.append(['TOTALE', f"{df_bil['kWh/anno'].sum():,.0f}", f"{df_bil['TEP'].sum():.2f}"])
+                        story.append(make_table(rows_c, [7*cm, 4*cm, 3*cm], total_row=True))
+                        story.append(Spacer(1, 0.4*cm))
+
+                        # Per vettore
+                        story.append(Paragraph("Riepilogo per vettore", styles['Heading3']))
+                        riep_vet = df_bil.groupby(['Vettore', 'Unità']).agg({'Consumo': 'sum', 'TEP': 'sum'}).reset_index()
+                        rows_v = [['Vettore', 'Consumo', 'Unità', 'TEP']]
+                        for _, r in riep_vet.iterrows():
+                            rows_v.append([r['Vettore'], f"{r['Consumo']:,.1f}", r['Unità'], f"{r['TEP']:.2f}"])
+                        story.append(make_table(rows_v, [5*cm, 4*cm, 2.5*cm, 3*cm]))
+                        story.append(Spacer(1, 0.5*cm))
+
+                    # ===== 6. INDICI ENERGETICI =====
+                    if 'indici_calcolati' in st.session_state and not st.session_state.indici_calcolati.empty:
+                        story.append(PageBreak())
+                        story.append(Paragraph("5. INDICI DI PRESTAZIONE ENERGETICA", styles['SezTitolo']))
+                        df_idx = st.session_state.indici_calcolati
+                        for cat in ["ATTIVITA PRINCIPALI", "SERVIZI AUSILIARI", "SERVIZI GENERALI"]:
+                            group = df_idx[df_idx['Categoria'] == cat]
+                            if group.empty:
+                                continue
+                            story.append(Paragraph(cat, styles['Heading3']))
+                            rows_i = [['Attività', 'Vettore', 'Valore', 'Unità', 'Calcolo']]
+                            for _, r in group.iterrows():
+                                rows_i.append([
+                                    str(r['Attività'])[:25],
+                                    str(r['Vettore'])[:15],
+                                    f"{r['Indice']:.4f}",
+                                    str(r['Unità indice']),
+                                    str(r['Calcolo'])[:30],
+                                ])
+                            story.append(make_table(rows_i, [4*cm, 3*cm, 2.5*cm, 2.5*cm, 4*cm], font_size=8))
+                            story.append(Spacer(1, 0.4*cm))
+
+                    # ===== 7. INTERVENTI =====
+                    if st.session_state.interventi:
+                        story.append(PageBreak())
+                        story.append(Paragraph("6. INTERVENTI DI EFFICIENTAMENTO ENERGETICO", styles['SezTitolo']))
+
+                        # Tabella sintetica
+                        rows_int = [['Intervento', 'Vettore', 'Investim.', 'Risparmio €/a', 'PB (a)', 'VAN (€)']]
+                        for interv in st.session_state.interventi:
+                            rows_int.append([
+                                str(interv['nome'])[:30],
+                                str(interv['vettore'])[:12],
+                                f"€ {interv['costo_inv']:,.0f}",
+                                f"€ {interv['risparmio_euro']:,.0f}",
+                                f"{interv['payback']:.1f}",
+                                f"€ {interv['van']:,.0f}",
+                            ])
+                        story.append(make_table(rows_int, [4.5*cm, 2.5*cm, 2.3*cm, 2.5*cm, 1.5*cm, 2.5*cm], font_size=8))
+                        story.append(Spacer(1, 0.5*cm))
+
+                        # Dettaglio per ogni intervento
+                        for idx, interv in enumerate(st.session_state.interventi, 1):
+                            story.append(Paragraph(f"Intervento {idx}: {interv['nome']}", styles['Heading3']))
+                            data_d = [
+                                ['Voce', 'Valore'],
+                                ['Vettore risparmiato', interv['vettore']],
+                                ['Costo investimento', f"€ {interv['costo_inv']:,.2f}"],
+                                ['Costo manutenzione annuo', f"€ {interv['costo_man']:,.2f}"],
+                                ['Risparmio energetico annuo', f"{interv['risparmio']:,.0f} (kWh/Smc/litri)"],
+                                ['Risparmio economico annuo', f"€ {interv['risparmio_euro']:,.2f}"],
+                                ['Vita utile', f"{interv['vita_utile']} anni"],
+                                ['Tasso attualizzazione', f"{interv['tasso']*100:.1f}%"],
+                                ['Tempo di ritorno (Payback)', f"{interv['payback']:.1f} anni"],
+                                ['VAN', f"€ {interv['van']:,.2f}"],
+                            ]
+                            story.append(make_table(data_d, [6*cm, 10*cm], font_size=9))
+                            if interv.get('note'):
+                                story.append(Spacer(1, 0.2*cm))
+                                story.append(Paragraph(f"<i>Note:</i> {interv['note']}", styles['Body']))
+                            story.append(Spacer(1, 0.4*cm))
+
+                    # ===== 8. CONCLUSIONI =====
+                    story.append(PageBreak())
+                    story.append(Paragraph("7. CONCLUSIONI E SINTESI", styles['SezTitolo']))
+
+                    story.append(Paragraph(
+                        f"L'azienda <b>{anag.get('ragione_sociale','')}</b> nell'anno di riferimento <b>{anag.get('anno_rif','')}</b> ha consumato complessivamente <b>{totali['tep_totale']:.2f} TEP</b> "
+                        f"per una spesa totale di <b>€ {totali['costo_totale']:,.0f}</b>, con emissioni stimate di "
+                        f"<b>{totali['co2_totale']:.2f} tonnellate</b> di CO₂.",
+                        styles['Body']
+                    ))
+
+                    if st.session_state.interventi:
+                        tot_inv = sum(i['costo_inv'] for i in st.session_state.interventi)
+                        tot_risp = sum(i['risparmio_euro'] for i in st.session_state.interventi)
+                        tot_van = sum(i['van'] for i in st.session_state.interventi)
+                        pb_glob = tot_inv / tot_risp if tot_risp > 0 else 0
+                        story.append(Spacer(1, 0.3*cm))
+                        story.append(Paragraph(
+                            f"Sono stati proposti <b>{len(st.session_state.interventi)} interventi</b> di efficientamento, "
+                            f"per un investimento complessivo di <b>€ {tot_inv:,.0f}</b> e un risparmio annuo di "
+                            f"<b>€ {tot_risp:,.0f}</b> (Payback medio {pb_glob:.1f} anni, VAN totale € {tot_van:,.0f}).",
+                            styles['Body']
+                        ))
+
+                    story.append(Spacer(1, 0.6*cm))
+                    story.append(Paragraph("Riepilogo finale", styles['Heading3']))
+                    rows_fin = [
+                        ['Indicatore', 'Valore'],
+                        ['Energia totale', f"{totali['tep_totale']:.2f} TEP"],
+                        ['Spesa energetica totale', f"€ {totali['costo_totale']:,.2f}"],
+                        ['Emissioni CO₂', f"{totali['co2_totale']:.2f} ton/anno"],
+                    ]
+                    if st.session_state.interventi:
+                        rows_fin.append(['Investimenti proposti', f"€ {sum(i['costo_inv'] for i in st.session_state.interventi):,.0f}"])
+                        rows_fin.append(['Risparmio annuo atteso', f"€ {sum(i['risparmio_euro'] for i in st.session_state.interventi):,.0f}"])
+                    story.append(make_table(rows_fin, [8*cm, 8*cm]))
+
+                    story.append(Spacer(1, 1*cm))
+                    story.append(Paragraph(
+                        "<i>Il presente report è stato redatto ai sensi del D.Lgs. 102/2014 e della norma UNI CEI EN 16247. "
+                        "I dati riportati sono ricavati dalle bollette dell'anno di riferimento e dalle stime di bilancio energetico.</i>",
+                        styles['Body']
+                    ))
 
                     doc.build(story)
                     buffer_pdf.seek(0)
 
                     st.session_state.pdf_data = buffer_pdf.getvalue()
-                    st.session_state.pdf_filename = f"REPORT_DE_{nome_azienda}_{st.session_state.anagrafica['anno_rif']}.pdf"
+                    st.session_state.pdf_filename = f"REPORT_DE_{nome_azienda}_{anag.get('anno_rif','')}.pdf"
                     st.success("✓ File PDF generato!")
 
                 except Exception as e:
