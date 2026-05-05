@@ -23,13 +23,19 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Costanti
+# Costanti — fattori di conversione TEP (D.Lgs. 102/2014, FIRE)
 TEP_EE = 0.000187
 TEP_GAS = 0.000836
 TEP_GASOLIO = 0.00086
+
+# Fattori emissioni CO2
 CO2_EE = 0.460  # kg/kWh
 CO2_GAS = 1.950  # kg/Smc
 CO2_GASOLIO = 2.650  # kg/litro
+
+# Poteri calorifici inferiori (per conversione kWh termici → unità vettore)
+PCI_GAS_KWH_PER_SMC = 9.97   # kWh/Smc (gas naturale)
+PCI_GASOLIO_KWH_PER_L = 10.0  # kWh/litro
 
 MESI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
         "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
@@ -121,6 +127,7 @@ if 'bilancio' not in st.session_state:
         st.session_state.bilancio = pd.DataFrame({
             'Categoria': ['ATTIVITA PRINCIPALI'] * 3 + ['SERVIZI AUSILIARI'] * 2 + ['SERVIZI GENERALI'] * 2,
             'Descrizione': ['Linea produzione 1', 'Linea produzione 2', 'Magazzino', 'Compressore', 'Pompe', 'Illuminazione', 'Climatizzazione'],
+            'Vettore': ['Energia Elettrica', 'Energia Elettrica', 'Gas Naturale', 'Energia Elettrica', 'Energia Elettrica', 'Energia Elettrica', 'Gas Naturale'],
             'Potenza (kW)': [45.0, 30.0, 15.0, 22.0, 7.5, 12.0, 35.0],
             'Ore/giorno': [8.0, 8.0, 8.0, 8.0, 6.0, 10.0, 8.0],
             'Giorni/anno': [250, 250, 250, 250, 250, 300, 200],
@@ -131,6 +138,7 @@ if 'bilancio' not in st.session_state:
         st.session_state.bilancio = pd.DataFrame({
             'Categoria': ['ATTIVITA PRINCIPALI'] * 3 + ['SERVIZI AUSILIARI'] * 2 + ['SERVIZI GENERALI'] * 2,
             'Descrizione': ['Reparto 1', 'Reparto 2', 'Reparto 3', 'Compressore', 'Altro', 'Illuminazione', 'Clima'],
+            'Vettore': ['Energia Elettrica'] * 7,
             'Potenza (kW)': [0.0] * 7,
             'Ore/giorno': [8.0] * 7,
             'Giorni/anno': [250] * 7,
@@ -217,12 +225,28 @@ def calcola_totali():
 
 
 def calcola_bilancio():
-    """Calcola i consumi dal bilancio energetico."""
+    """Calcola i consumi dal bilancio energetico per ogni vettore."""
     df = st.session_state.bilancio.copy()
     if 'C.C.' not in df.columns:
         df['C.C.'] = 1.0
+    if 'Vettore' not in df.columns:
+        df['Vettore'] = 'Energia Elettrica'
+
     df['kWh/anno'] = df['Potenza (kW)'] * df['Ore/giorno'] * df['Giorni/anno'] * df['Fattore carico'] * df['C.C.']
-    df['TEP'] = df['kWh/anno'] * TEP_EE
+
+    def _conv(row):
+        v = row['Vettore']
+        kwh = row['kWh/anno']
+        if v == 'Gas Naturale':
+            consumo = kwh / PCI_GAS_KWH_PER_SMC
+            return pd.Series({'Consumo': consumo, 'Unità': 'Smc', 'TEP': consumo * TEP_GAS, 'CO2 (ton)': consumo * CO2_GAS / 1000})
+        elif v == 'Gasolio':
+            consumo = kwh / PCI_GASOLIO_KWH_PER_L
+            return pd.Series({'Consumo': consumo, 'Unità': 'litri', 'TEP': consumo * TEP_GASOLIO, 'CO2 (ton)': consumo * CO2_GASOLIO / 1000})
+        else:  # Energia Elettrica o Altro
+            return pd.Series({'Consumo': kwh, 'Unità': 'kWh', 'TEP': kwh * TEP_EE, 'CO2 (ton)': kwh * CO2_EE / 1000})
+
+    df[['Consumo', 'Unità', 'TEP', 'CO2 (ton)']] = df.apply(_conv, axis=1)
     return df
 
 
@@ -549,11 +573,17 @@ elif menu == "☀️ Fotovoltaico":
 elif menu == "⚖️ Bilancio Energetico":
     st.title("⚖️ Bilancio Energetico")
 
-    st.markdown("Definisci la ripartizione dei consumi elettrici per area/reparto.")
+    st.markdown("Definisci la ripartizione dei consumi per area/reparto e per vettore energetico.")
 
-    # Migrazione automatica: aggiungi C.C. se manca (compatibilità progetti vecchi)
+    # Migrazione automatica per progetti vecchi
     if 'C.C.' not in st.session_state.bilancio.columns:
         st.session_state.bilancio['C.C.'] = 1.0
+    if 'Vettore' not in st.session_state.bilancio.columns:
+        st.session_state.bilancio['Vettore'] = 'Energia Elettrica'
+
+    # Riordino colonne per UX (Vettore subito dopo Descrizione)
+    col_order = ['Categoria', 'Descrizione', 'Vettore', 'Potenza (kW)', 'Ore/giorno', 'Giorni/anno', 'Fattore carico', 'C.C.']
+    st.session_state.bilancio = st.session_state.bilancio[[c for c in col_order if c in st.session_state.bilancio.columns]]
 
     # Editor
     edited_df = st.data_editor(
@@ -566,7 +596,12 @@ elif menu == "⚖️ Bilancio Energetico":
                 options=["ATTIVITA PRINCIPALI", "SERVIZI AUSILIARI", "SERVIZI GENERALI", "ALTRO"]
             ),
             "Descrizione": st.column_config.TextColumn("Descrizione"),
-            "Potenza (kW)": st.column_config.NumberColumn("Potenza (kW)", min_value=0, format="%.2f"),
+            "Vettore": st.column_config.SelectboxColumn(
+                "Vettore",
+                options=["Energia Elettrica", "Gas Naturale", "Gasolio", "Altro"],
+                help="Vettore energetico associato all'utenza",
+            ),
+            "Potenza (kW)": st.column_config.NumberColumn("Potenza (kW)", min_value=0, format="%.2f", help="Potenza elettrica nominale (EE) o termica al focolare (Gas/Gasolio)"),
             "Ore/giorno": st.column_config.NumberColumn("Ore/giorno", min_value=0, max_value=24, format="%.1f"),
             "Giorni/anno": st.column_config.NumberColumn("Giorni/anno", min_value=0, max_value=365),
             "Fattore carico": st.column_config.NumberColumn("Fc (carico)", min_value=0, max_value=1, format="%.2f", help="Fattore di carico: frazione di potenza media rispetto alla nominale"),
@@ -575,40 +610,62 @@ elif menu == "⚖️ Bilancio Energetico":
     )
     st.session_state.bilancio = edited_df
 
+    st.caption(f"ℹ️ Conversione: kWh termici → Smc usando PCI gas {PCI_GAS_KWH_PER_SMC} kWh/Smc; → litri usando PCI gasolio {PCI_GASOLIO_KWH_PER_L} kWh/litro.")
+
     # Calcoli
     df_calc = calcola_bilancio()
 
     st.markdown("### Risultati")
 
-    # Riepilogo per categoria
-    riepilogo = df_calc.groupby('Categoria').agg({'kWh/anno': 'sum', 'TEP': 'sum'}).reset_index()
     totale_kwh = df_calc['kWh/anno'].sum()
+    totale_tep = df_calc['TEP'].sum()
 
+    # Riepilogo doppio: per Categoria e per Vettore
     col1, col2 = st.columns(2)
 
     with col1:
-        st.dataframe(riepilogo, use_container_width=True)
-        st.metric("Totale bilancio", f"{totale_kwh:,.0f} kWh")
-
-    with col2:
+        st.markdown("**Per categoria**")
+        riepilogo_cat = df_calc.groupby('Categoria').agg({'kWh/anno': 'sum', 'TEP': 'sum'}).reset_index()
+        st.dataframe(riepilogo_cat, use_container_width=True, hide_index=True)
         if totale_kwh > 0:
-            fig = px.pie(riepilogo, values='kWh/anno', names='Categoria', title='Ripartizione consumi')
+            fig = px.pie(riepilogo_cat, values='kWh/anno', names='Categoria', title='Ripartizione per categoria (kWh)')
             st.plotly_chart(fig, use_container_width=True)
 
-    # Confronto con consumi reali
-    consumi_reali = st.session_state.consumi_ee['kWh'].sum()
-    if consumi_reali > 0 and totale_kwh > 0:
-        diff = totale_kwh - consumi_reali
-        diff_perc = diff / consumi_reali * 100
+    with col2:
+        st.markdown("**Per vettore**")
+        riepilogo_vet = df_calc.groupby(['Vettore', 'Unità']).agg({'Consumo': 'sum', 'TEP': 'sum'}).reset_index()
+        st.dataframe(riepilogo_vet, use_container_width=True, hide_index=True)
+        if totale_tep > 0:
+            fig = px.pie(riepilogo_vet, values='TEP', names='Vettore', title='Ripartizione per vettore (TEP)')
+            st.plotly_chart(fig, use_container_width=True)
 
-        st.markdown("### Confronto con consumi reali")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Bilancio stimato", f"{totale_kwh:,.0f} kWh")
-        col2.metric("Consumi da bollette", f"{consumi_reali:,.0f} kWh")
-        col3.metric("Differenza", f"{diff:+,.0f} kWh ({diff_perc:+.1f}%)")
+    col_a, col_b = st.columns(2)
+    col_a.metric("Energia totale (kWh equivalenti)", f"{totale_kwh:,.0f}")
+    col_b.metric("TEP totale", f"{totale_tep:.2f}")
 
-        if abs(diff_perc) > 20:
-            st.warning("⚠️ La differenza supera il 20%. Verifica i dati del bilancio o considera l'autoconsumo fotovoltaico.")
+    # Confronto con consumi reali per vettore
+    st.markdown("### Confronto con consumi da bollette")
+
+    bollette = {
+        'Energia Elettrica': (st.session_state.consumi_ee['kWh'].sum(), 'kWh'),
+        'Gas Naturale': (st.session_state.consumi_gas['Smc'].sum(), 'Smc'),
+        'Gasolio': (st.session_state.consumi_gasolio['Litri'].sum(), 'litri'),
+    }
+
+    for vettore, (reale, unita) in bollette.items():
+        df_v = df_calc[df_calc['Vettore'] == vettore]
+        stimato = df_v['Consumo'].sum() if not df_v.empty else 0.0
+        if stimato == 0 and reale == 0:
+            continue
+        c1, c2, c3, c4 = st.columns([1.2, 1, 1, 1])
+        c1.write(f"**{vettore}**")
+        c2.metric("Bilancio", f"{stimato:,.0f} {unita}")
+        c3.metric("Bollette", f"{reale:,.0f} {unita}")
+        if reale > 0:
+            diff_perc = (stimato - reale) / reale * 100
+            c4.metric("Δ", f"{diff_perc:+.1f}%")
+            if abs(diff_perc) > 20:
+                st.warning(f"⚠️ {vettore}: scostamento bilancio/bollette > 20%. Verifica i dati o considera autoproduzione (es. fotovoltaico).")
 
 
 elif menu == "🔧 Interventi":
