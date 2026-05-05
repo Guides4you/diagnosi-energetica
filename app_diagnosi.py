@@ -125,6 +125,7 @@ if 'bilancio' not in st.session_state:
             'Ore/giorno': [8.0, 8.0, 8.0, 8.0, 6.0, 10.0, 8.0],
             'Giorni/anno': [250, 250, 250, 250, 250, 300, 200],
             'Fattore carico': [0.70, 0.65, 0.40, 0.60, 0.50, 0.80, 0.55],
+            'C.C.': [1.0, 1.0, 0.8, 0.9, 0.7, 1.0, 1.0],
         })
     else:
         st.session_state.bilancio = pd.DataFrame({
@@ -134,6 +135,7 @@ if 'bilancio' not in st.session_state:
             'Ore/giorno': [8.0] * 7,
             'Giorni/anno': [250] * 7,
             'Fattore carico': [0.5] * 7,
+            'C.C.': [1.0] * 7,
         })
 
 if 'interventi' not in st.session_state:
@@ -217,7 +219,9 @@ def calcola_totali():
 def calcola_bilancio():
     """Calcola i consumi dal bilancio energetico."""
     df = st.session_state.bilancio.copy()
-    df['kWh/anno'] = df['Potenza (kW)'] * df['Ore/giorno'] * df['Giorni/anno'] * df['Fattore carico']
+    if 'C.C.' not in df.columns:
+        df['C.C.'] = 1.0
+    df['kWh/anno'] = df['Potenza (kW)'] * df['Ore/giorno'] * df['Giorni/anno'] * df['Fattore carico'] * df['C.C.']
     df['TEP'] = df['kWh/anno'] * TEP_EE
     return df
 
@@ -547,6 +551,10 @@ elif menu == "⚖️ Bilancio Energetico":
 
     st.markdown("Definisci la ripartizione dei consumi elettrici per area/reparto.")
 
+    # Migrazione automatica: aggiungi C.C. se manca (compatibilità progetti vecchi)
+    if 'C.C.' not in st.session_state.bilancio.columns:
+        st.session_state.bilancio['C.C.'] = 1.0
+
     # Editor
     edited_df = st.data_editor(
         st.session_state.bilancio,
@@ -561,7 +569,8 @@ elif menu == "⚖️ Bilancio Energetico":
             "Potenza (kW)": st.column_config.NumberColumn("Potenza (kW)", min_value=0, format="%.2f"),
             "Ore/giorno": st.column_config.NumberColumn("Ore/giorno", min_value=0, max_value=24, format="%.1f"),
             "Giorni/anno": st.column_config.NumberColumn("Giorni/anno", min_value=0, max_value=365),
-            "Fattore carico": st.column_config.NumberColumn("Fattore carico", min_value=0, max_value=1, format="%.2f"),
+            "Fattore carico": st.column_config.NumberColumn("Fc (carico)", min_value=0, max_value=1, format="%.2f", help="Fattore di carico: frazione di potenza media rispetto alla nominale"),
+            "C.C.": st.column_config.NumberColumn("C.C. (contemp.)", min_value=0, max_value=1, format="%.2f", help="Fattore di contemporaneità: frazione di tempo in cui l'utenza è attiva contemporaneamente"),
         }
     )
     st.session_state.bilancio = edited_df
