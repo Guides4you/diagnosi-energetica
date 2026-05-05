@@ -251,6 +251,51 @@ st.sidebar.metric("Spesa totale", f"€ {totali['costo_totale']:,.0f}")
 st.sidebar.metric("CO2 totale", f"{totali['co2_totale']:.1f} ton")
 
 
+# === SALVA / CARICA PROGETTO (sempre visibile) ===
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 💾 Progetto")
+
+if st.sidebar.button("💾 Salva progetto", use_container_width=True):
+    progetto = {
+        'anagrafica': st.session_state.anagrafica,
+        'consumi_ee': st.session_state.consumi_ee.to_dict(),
+        'consumi_gas': st.session_state.consumi_gas.to_dict(),
+        'consumi_gasolio': st.session_state.consumi_gasolio.to_dict(),
+        'bilancio': st.session_state.bilancio.to_dict(),
+        'interventi': st.session_state.interventi,
+        'fotovoltaico': st.session_state.fotovoltaico,
+    }
+    _nome = (st.session_state.anagrafica.get('ragione_sociale') or 'progetto').replace(' ', '_').replace('.', '')
+    st.session_state.json_data = json.dumps(progetto, indent=2).encode('utf-8')
+    st.session_state.json_filename = f"progetto_{_nome}.json"
+
+if 'json_data' in st.session_state:
+    st.sidebar.download_button(
+        label="⬇️ Scarica file progetto",
+        data=st.session_state.json_data,
+        file_name=st.session_state.json_filename,
+        mime="application/json",
+        use_container_width=True,
+    )
+
+uploaded = st.sidebar.file_uploader("Carica progetto (.json)", type="json", key="sidebar_uploader")
+if uploaded is not None:
+    progetto = json.load(uploaded)
+    st.session_state.anagrafica = progetto['anagrafica']
+    st.session_state.consumi_ee = pd.DataFrame(progetto['consumi_ee'])
+    st.session_state.consumi_gas = pd.DataFrame(progetto['consumi_gas'])
+    st.session_state.consumi_gasolio = pd.DataFrame(progetto['consumi_gasolio'])
+    st.session_state.bilancio = pd.DataFrame(progetto['bilancio'])
+    st.session_state.interventi = progetto['interventi']
+    st.session_state.fotovoltaico = progetto['fotovoltaico']
+    # Reset chiavi widget così verranno reinizializzate dai nuovi dati
+    for k in list(st.session_state.keys()):
+        if isinstance(k, str) and (k.startswith('anag_') or k.startswith('fv_') or k.startswith('int_') or k == 'anno_sidebar'):
+            del st.session_state[k]
+    st.sidebar.success("✓ Progetto caricato!")
+    st.rerun()
+
+
 # === PAGINE ===
 
 if menu == "🏠 Home":
@@ -972,58 +1017,7 @@ elif menu == "📄 Genera Report":
     else:
         st.warning("⚠️ Compila almeno l'anagrafica e inserisci i consumi prima di generare il report.")
 
-    # Salva/Carica progetto
-    st.markdown("---")
-    st.markdown("### Salva/Carica progetto")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button("💾 Salva progetto"):
-            progetto = {
-                'anagrafica': st.session_state.anagrafica,
-                'consumi_ee': st.session_state.consumi_ee.to_dict(),
-                'consumi_gas': st.session_state.consumi_gas.to_dict(),
-                'consumi_gasolio': st.session_state.consumi_gasolio.to_dict(),
-                'bilancio': st.session_state.bilancio.to_dict(),
-                'interventi': st.session_state.interventi,
-                'fotovoltaico': st.session_state.fotovoltaico,
-            }
-
-            nome_azienda = st.session_state.anagrafica['ragione_sociale'].replace(' ', '_').replace('.', '') or "progetto"
-
-            st.session_state.json_data = json.dumps(progetto, indent=2).encode('utf-8')
-            st.session_state.json_filename = f"progetto_{nome_azienda}.json"
-            st.success("✓ Progetto salvato!")
-
-        if 'json_data' in st.session_state:
-            st.download_button(
-                label="⬇️ Scarica progetto",
-                data=st.session_state.json_data,
-                file_name=st.session_state.json_filename,
-                mime="application/json"
-            )
-
-    with col2:
-        uploaded_file = st.file_uploader("Carica progetto (.json)", type="json")
-        if uploaded_file is not None:
-            progetto = json.load(uploaded_file)
-
-            st.session_state.anagrafica = progetto['anagrafica']
-            st.session_state.consumi_ee = pd.DataFrame(progetto['consumi_ee'])
-            st.session_state.consumi_gas = pd.DataFrame(progetto['consumi_gas'])
-            st.session_state.consumi_gasolio = pd.DataFrame(progetto['consumi_gasolio'])
-            st.session_state.bilancio = pd.DataFrame(progetto['bilancio'])
-            st.session_state.interventi = progetto['interventi']
-            st.session_state.fotovoltaico = progetto['fotovoltaico']
-
-            # Reset chiavi widget così verranno reinizializzate dai nuovi dati caricati
-            for k in list(st.session_state.keys()):
-                if isinstance(k, str) and (k.startswith('anag_') or k.startswith('fv_') or k.startswith('int_') or k == 'anno_sidebar'):
-                    del st.session_state[k]
-
-            st.success("✓ Progetto caricato!")
-            st.rerun()
+    st.info("💾 Per salvare/caricare il progetto usa i pulsanti nella sidebar a sinistra.")
 
 
 # Footer
