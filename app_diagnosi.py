@@ -179,6 +179,42 @@ if 'interventi' not in st.session_state:
     else:
         st.session_state.interventi = []
 
+if 'driver_energetici' not in st.session_state:
+    if MODO_TEST:
+        st.session_state.driver_energetici = pd.DataFrame({
+            'Nome': ['Superficie totale', 'Superficie riscaldata', 'Produzione', 'Addetti'],
+            'Quantità': [1500.0, 800.0, 200.0, 25.0],
+            'Unità': ['mq', 'mq', 'ton', 'n'],
+            'Categoria': ['Generale', 'Generale', 'Principale', 'Generale'],
+        })
+    else:
+        st.session_state.driver_energetici = pd.DataFrame({
+            'Nome': ['Superficie totale'],
+            'Quantità': [0.0],
+            'Unità': ['mq'],
+            'Categoria': ['Generale'],
+        })
+
+if 'indici_consumi' not in st.session_state:
+    if MODO_TEST:
+        st.session_state.indici_consumi = pd.DataFrame({
+            'Attività': ['Riscaldamento ambienti', 'Linea produzione 1', 'Illuminazione'],
+            'Categoria': ['SERVIZI GENERALI', 'ATTIVITA PRINCIPALI', 'SERVIZI GENERALI'],
+            'Vettore': ['Gas Naturale', 'Energia Elettrica', 'Energia Elettrica'],
+            'Consumo annuo': [3000.0, 80000.0, 15000.0],
+            'Unità consumo': ['Smc', 'kWh', 'kWh'],
+            'Driver': ['Superficie riscaldata', 'Produzione', 'Superficie totale'],
+        })
+    else:
+        st.session_state.indici_consumi = pd.DataFrame({
+            'Attività': pd.Series([], dtype='object'),
+            'Categoria': pd.Series([], dtype='object'),
+            'Vettore': pd.Series([], dtype='object'),
+            'Consumo annuo': pd.Series([], dtype='float'),
+            'Unità consumo': pd.Series([], dtype='object'),
+            'Driver': pd.Series([], dtype='object'),
+        })
+
 if 'fotovoltaico' not in st.session_state:
     if MODO_TEST:
         st.session_state.fotovoltaico = {
@@ -268,7 +304,7 @@ menu = st.sidebar.radio(
     "Sezioni",
     ["🏠 Home", "🏢 Anagrafica", "📊 Consumi EE", "🔥 Consumi Gas",
      "⛽ Consumi Gasolio", "☀️ Fotovoltaico", "⚖️ Bilancio Energetico",
-     "🔧 Interventi", "📈 Dashboard", "📄 Genera Report"]
+     "📐 Indici Energetici", "🔧 Interventi", "📈 Dashboard", "📄 Genera Report"]
 )
 
 st.sidebar.markdown("---")
@@ -290,6 +326,8 @@ if st.sidebar.button("💾 Salva progetto", use_container_width=True):
         'consumi_gas': st.session_state.consumi_gas.to_dict(),
         'consumi_gasolio': st.session_state.consumi_gasolio.to_dict(),
         'bilancio': st.session_state.bilancio.to_dict(),
+        'driver_energetici': st.session_state.driver_energetici.to_dict(),
+        'indici_consumi': st.session_state.indici_consumi.to_dict(),
         'interventi': st.session_state.interventi,
         'fotovoltaico': st.session_state.fotovoltaico,
     }
@@ -316,9 +354,14 @@ if uploaded is not None:
     st.session_state.bilancio = pd.DataFrame(progetto['bilancio'])
     st.session_state.interventi = progetto['interventi']
     st.session_state.fotovoltaico = progetto['fotovoltaico']
+    # Compatibilità retroattiva: i campi nuovi possono mancare nei JSON vecchi
+    if 'driver_energetici' in progetto:
+        st.session_state.driver_energetici = pd.DataFrame(progetto['driver_energetici'])
+    if 'indici_consumi' in progetto:
+        st.session_state.indici_consumi = pd.DataFrame(progetto['indici_consumi'])
     # Reset chiavi widget così verranno reinizializzate dai nuovi dati
     for k in list(st.session_state.keys()):
-        if isinstance(k, str) and (k.startswith('anag_') or k.startswith('fv_') or k.startswith('int_') or k == 'anno_sidebar'):
+        if isinstance(k, str) and (k.startswith('anag_') or k.startswith('fv_') or k.startswith('int_') or k == 'anno_sidebar' or k.startswith('indici_')):
             del st.session_state[k]
     st.sidebar.success("✓ Progetto caricato!")
     st.rerun()
@@ -666,6 +709,129 @@ elif menu == "⚖️ Bilancio Energetico":
             c4.metric("Δ", f"{diff_perc:+.1f}%")
             if abs(diff_perc) > 20:
                 st.warning(f"⚠️ {vettore}: scostamento bilancio/bollette > 20%. Verifica i dati o considera autoproduzione (es. fotovoltaico).")
+
+
+elif menu == "📐 Indici Energetici":
+    st.title("📐 Indici Energetici")
+    st.markdown("Definisci i **driver** (mq, kg, ton, pz...) e i **consumi per attività**. L'app calcola gli indici di prestazione (es. kWh/ton, Smc/mq).")
+
+    # --- DRIVER
+    st.markdown("### 1️⃣ Driver di consumo")
+    st.caption("I driver sono le grandezze che 'spiegano' il consumo: superficie, produzione, addetti, ore di funzionamento, ecc.")
+
+    driver_df = st.data_editor(
+        st.session_state.driver_energetici,
+        num_rows="dynamic",
+        use_container_width=True,
+        key="indici_driver_editor",
+        column_config={
+            "Nome": st.column_config.TextColumn("Nome", help="Es: 'Superficie riscaldata', 'Produzione pane'"),
+            "Quantità": st.column_config.NumberColumn("Quantità", min_value=0.0, format="%.2f"),
+            "Unità": st.column_config.SelectboxColumn(
+                "Unità",
+                options=["mq", "mc", "kg", "ton", "pz", "n", "ore", "addetti", "litri"],
+            ),
+            "Categoria": st.column_config.SelectboxColumn(
+                "Categoria",
+                options=["Principale", "Ausiliario", "Generale"],
+                help="Tipo di attività che il driver caratterizza",
+            ),
+        },
+    )
+    st.session_state.driver_energetici = driver_df
+
+    # --- CONSUMI
+    st.markdown("### 2️⃣ Consumi per attività")
+    st.caption("Associa il consumo annuo di ogni attività al driver di riferimento.")
+
+    driver_options = sorted([n for n in driver_df['Nome'].dropna().tolist() if str(n).strip()])
+    if not driver_options:
+        driver_options = ['—']
+
+    indici_df = st.data_editor(
+        st.session_state.indici_consumi,
+        num_rows="dynamic",
+        use_container_width=True,
+        key="indici_consumi_editor",
+        column_config={
+            "Attività": st.column_config.TextColumn("Attività", help="Es: 'Cottura', 'Climatizzazione uffici'"),
+            "Categoria": st.column_config.SelectboxColumn(
+                "Categoria",
+                options=["ATTIVITA PRINCIPALI", "SERVIZI AUSILIARI", "SERVIZI GENERALI"],
+            ),
+            "Vettore": st.column_config.SelectboxColumn(
+                "Vettore",
+                options=["Energia Elettrica", "Gas Naturale", "Gasolio", "Altro"],
+            ),
+            "Consumo annuo": st.column_config.NumberColumn("Consumo annuo", min_value=0.0, format="%.2f"),
+            "Unità consumo": st.column_config.SelectboxColumn(
+                "Unità consumo",
+                options=["kWh", "Smc", "litri", "MJ", "TEP"],
+            ),
+            "Driver": st.column_config.SelectboxColumn(
+                "Driver",
+                options=driver_options,
+                help="Driver associato all'attività",
+            ),
+        },
+    )
+    st.session_state.indici_consumi = indici_df
+
+    # --- CALCOLO INDICI
+    st.markdown("### 3️⃣ Indici calcolati")
+
+    rows = []
+    if not indici_df.empty and not driver_df.empty:
+        for _, r in indici_df.iterrows():
+            dname = str(r.get('Driver') or '').strip()
+            if not dname or dname == '—':
+                continue
+            d_match = driver_df[driver_df['Nome'] == dname]
+            if d_match.empty:
+                continue
+            quantita = float(d_match.iloc[0]['Quantità'] or 0)
+            if quantita == 0:
+                continue
+            unita_d = d_match.iloc[0]['Unità']
+            consumo = float(r['Consumo annuo'] or 0)
+            unita_c = r['Unità consumo']
+            indice = consumo / quantita
+            rows.append({
+                'Categoria': r['Categoria'],
+                'Attività': r['Attività'],
+                'Vettore': r['Vettore'],
+                'Indice': indice,
+                'Unità indice': f"{unita_c}/{unita_d}",
+                'Calcolo': f"{consumo:,.1f} {unita_c} ÷ {quantita:,.1f} {unita_d}",
+            })
+
+    if rows:
+        df_idx = pd.DataFrame(rows)
+        st.session_state.indici_calcolati = df_idx
+
+        for cat in ["ATTIVITA PRINCIPALI", "SERVIZI AUSILIARI", "SERVIZI GENERALI"]:
+            group = df_idx[df_idx['Categoria'] == cat]
+            if group.empty:
+                continue
+            st.markdown(f"**{cat}**")
+            st.dataframe(
+                group[['Attività', 'Vettore', 'Indice', 'Unità indice', 'Calcolo']],
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    'Indice': st.column_config.NumberColumn('Valore', format="%.4f"),
+                },
+            )
+
+        # Riepilogo numero indici
+        st.markdown("---")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Indici totali", len(df_idx))
+        col2.metric("Driver utilizzati", len(set(indici_df['Driver'].dropna()) & set(driver_df['Nome'].dropna())))
+        col3.metric("Categorie coperte", df_idx['Categoria'].nunique())
+    else:
+        st.session_state.indici_calcolati = pd.DataFrame()
+        st.info("ℹ️ Per calcolare gli indici servono almeno un driver con Quantità > 0 e un'attività con Driver associato.")
 
 
 elif menu == "🔧 Interventi":
