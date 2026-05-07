@@ -40,6 +40,18 @@ CO2_GASOLIO = 2.650  # kg/litro
 PCI_GAS_KWH_PER_SMC = 9.97   # kWh/Smc (gas naturale)
 PCI_GASOLIO_KWH_PER_L = 10.0  # kWh/litro
 
+# Fattori conversione potenza → kW (per bilancio)
+POTENZA_FACTORS_KW = {
+    'kW': 1.0,
+    'kVA': 0.9,        # Assumendo cosφ=0.9
+    'CV': 0.7355,      # Cavalli (sistema metrico)
+    'HP': 0.7457,      # Horsepower (sistema imperiale)
+    'kcal/h': 0.001163,
+    'kJ/h': 0.000278,
+    'W': 0.001,
+}
+POTENZA_UNITS = list(POTENZA_FACTORS_KW.keys())
+
 MESI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
         "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
 
@@ -131,7 +143,8 @@ if 'bilancio' not in st.session_state:
             'Categoria': ['ATTIVITA PRINCIPALI'] * 3 + ['SERVIZI AUSILIARI'] * 2 + ['SERVIZI GENERALI'] * 2,
             'Descrizione': ['Linea produzione 1', 'Linea produzione 2', 'Magazzino', 'Compressore', 'Pompe', 'Illuminazione', 'Climatizzazione'],
             'Vettore': ['Energia Elettrica', 'Energia Elettrica', 'Gas Naturale', 'Energia Elettrica', 'Energia Elettrica', 'Energia Elettrica', 'Gas Naturale'],
-            'Potenza (kW)': [45.0, 30.0, 15.0, 22.0, 7.5, 12.0, 35.0],
+            'Potenza': [45.0, 30.0, 15.0, 22.0, 7.5, 12.0, 35.0],
+            'Unità Potenza': ['kW'] * 7,
             'Ore/giorno': [8.0, 8.0, 8.0, 8.0, 6.0, 10.0, 8.0],
             'Giorni/anno': [250, 250, 250, 250, 250, 300, 200],
             'Fattore carico': [0.70, 0.65, 0.40, 0.60, 0.50, 0.80, 0.55],
@@ -142,7 +155,8 @@ if 'bilancio' not in st.session_state:
             'Categoria': ['ATTIVITA PRINCIPALI'] * 3 + ['SERVIZI AUSILIARI'] * 2 + ['SERVIZI GENERALI'] * 2,
             'Descrizione': ['Reparto 1', 'Reparto 2', 'Reparto 3', 'Compressore', 'Altro', 'Illuminazione', 'Clima'],
             'Vettore': ['Energia Elettrica'] * 7,
-            'Potenza (kW)': [0.0] * 7,
+            'Potenza': [0.0] * 7,
+            'Unità Potenza': ['kW'] * 7,
             'Ore/giorno': [8.0] * 7,
             'Giorni/anno': [250] * 7,
             'Fattore carico': [0.5] * 7,
@@ -270,6 +284,18 @@ def calcola_bilancio():
         df['C.C.'] = 1.0
     if 'Vettore' not in df.columns:
         df['Vettore'] = 'Energia Elettrica'
+    # Compatibilità con il vecchio schema (colonna 'Potenza (kW)')
+    if 'Potenza' not in df.columns and 'Potenza (kW)' in df.columns:
+        df['Potenza'] = df['Potenza (kW)']
+        df['Unità Potenza'] = 'kW'
+    if 'Unità Potenza' not in df.columns:
+        df['Unità Potenza'] = 'kW'
+
+    # Conversione potenza → kW (in base all'unità scelta)
+    df['Potenza (kW)'] = df.apply(
+        lambda r: float(r.get('Potenza') or 0) * POTENZA_FACTORS_KW.get(r.get('Unità Potenza') or 'kW', 1.0),
+        axis=1,
+    )
 
     df['kWh/anno'] = df['Potenza (kW)'] * df['Ore/giorno'] * df['Giorni/anno'] * df['Fattore carico'] * df['C.C.']
 
@@ -491,9 +517,10 @@ elif menu == "📊 Consumi EE":
         st.session_state.consumi_ee,
         num_rows="fixed",
         use_container_width=True,
+        key="editor_consumi_ee",
         column_config={
             "Mese": st.column_config.TextColumn("Mese", disabled=True),
-            "kWh": st.column_config.NumberColumn("kWh", min_value=0, format="%.0f"),
+            "kWh": st.column_config.NumberColumn("kWh", min_value=0, format="%.2f"),
             "Costo (€)": st.column_config.NumberColumn("Costo (€)", min_value=0, format="%.2f"),
         }
     )
@@ -526,9 +553,10 @@ elif menu == "🔥 Consumi Gas":
         st.session_state.consumi_gas,
         num_rows="fixed",
         use_container_width=True,
+        key="editor_consumi_gas",
         column_config={
             "Mese": st.column_config.TextColumn("Mese", disabled=True),
-            "Smc": st.column_config.NumberColumn("Smc", min_value=0, format="%.0f"),
+            "Smc": st.column_config.NumberColumn("Smc", min_value=0, format="%.2f"),
             "Costo (€)": st.column_config.NumberColumn("Costo (€)", min_value=0, format="%.2f"),
         }
     )
@@ -557,9 +585,10 @@ elif menu == "⛽ Consumi Gasolio":
         st.session_state.consumi_gasolio,
         num_rows="fixed",
         use_container_width=True,
+        key="editor_consumi_gasolio",
         column_config={
             "Mese": st.column_config.TextColumn("Mese", disabled=True),
-            "Litri": st.column_config.NumberColumn("Litri", min_value=0, format="%.0f"),
+            "Litri": st.column_config.NumberColumn("Litri", min_value=0, format="%.2f"),
             "Costo (€)": st.column_config.NumberColumn("Costo (€)", min_value=0, format="%.2f"),
         }
     )
@@ -650,16 +679,25 @@ elif menu == "⚖️ Bilancio Energetico":
         st.session_state.bilancio['C.C.'] = 1.0
     if 'Vettore' not in st.session_state.bilancio.columns:
         st.session_state.bilancio['Vettore'] = 'Energia Elettrica'
+    # Migrazione: 'Potenza (kW)' → 'Potenza' + 'Unità Potenza'
+    if 'Potenza' not in st.session_state.bilancio.columns and 'Potenza (kW)' in st.session_state.bilancio.columns:
+        st.session_state.bilancio['Potenza'] = st.session_state.bilancio['Potenza (kW)']
+        st.session_state.bilancio = st.session_state.bilancio.drop(columns=['Potenza (kW)'])
+    if 'Unità Potenza' not in st.session_state.bilancio.columns:
+        st.session_state.bilancio['Unità Potenza'] = 'kW'
 
-    # Riordino colonne per UX (Vettore subito dopo Descrizione)
-    col_order = ['Categoria', 'Descrizione', 'Vettore', 'Potenza (kW)', 'Ore/giorno', 'Giorni/anno', 'Fattore carico', 'C.C.']
-    st.session_state.bilancio = st.session_state.bilancio[[c for c in col_order if c in st.session_state.bilancio.columns]]
+    # Riordino colonne per UX (solo se necessario, per non resettare data_editor)
+    col_order = ['Categoria', 'Descrizione', 'Vettore', 'Potenza', 'Unità Potenza', 'Ore/giorno', 'Giorni/anno', 'Fattore carico', 'C.C.']
+    available = [c for c in col_order if c in st.session_state.bilancio.columns]
+    if list(st.session_state.bilancio.columns) != available:
+        st.session_state.bilancio = st.session_state.bilancio[available]
 
     # Editor
     edited_df = st.data_editor(
         st.session_state.bilancio,
         num_rows="dynamic",
         use_container_width=True,
+        key="editor_bilancio",
         column_config={
             "Categoria": st.column_config.SelectboxColumn(
                 "Categoria",
@@ -671,7 +709,12 @@ elif menu == "⚖️ Bilancio Energetico":
                 options=["Energia Elettrica", "Gas Naturale", "Gasolio", "Altro"],
                 help="Vettore energetico associato all'utenza",
             ),
-            "Potenza (kW)": st.column_config.NumberColumn("Potenza (kW)", min_value=0, format="%.2f", help="Potenza elettrica nominale (EE) o termica al focolare (Gas/Gasolio)"),
+            "Potenza": st.column_config.NumberColumn("Potenza", min_value=0, format="%.2f", help="Valore numerico della potenza nominale"),
+            "Unità Potenza": st.column_config.SelectboxColumn(
+                "Unità",
+                options=POTENZA_UNITS,
+                help="Unità di misura della potenza. Conversione automatica a kW per il calcolo.",
+            ),
             "Ore/giorno": st.column_config.NumberColumn("Ore/giorno", min_value=0, max_value=24, format="%.1f"),
             "Giorni/anno": st.column_config.NumberColumn("Giorni/anno", min_value=0, max_value=365),
             "Fattore carico": st.column_config.NumberColumn("Fc (carico)", min_value=0, max_value=1, format="%.2f", help="Fattore di carico: frazione di potenza media rispetto alla nominale"),
@@ -680,7 +723,9 @@ elif menu == "⚖️ Bilancio Energetico":
     )
     st.session_state.bilancio = edited_df
 
-    st.caption(f"ℹ️ Conversione: kWh termici → Smc usando PCI gas {PCI_GAS_KWH_PER_SMC} kWh/Smc; → litri usando PCI gasolio {PCI_GASOLIO_KWH_PER_L} kWh/litro.")
+    st.caption(f"ℹ️ Potenza convertita automaticamente in kW (kVA·0.9, CV·0.7355, kcal/h·0.001163, ecc.). "
+               f"Conversione kWh termici → Smc tramite PCI gas {PCI_GAS_KWH_PER_SMC} kWh/Smc, → litri PCI gasolio {PCI_GASOLIO_KWH_PER_L} kWh/litro. "
+               f"Usa il **punto** (non la virgola) per i decimali.")
 
     # Calcoli
     df_calc = calcola_bilancio()
