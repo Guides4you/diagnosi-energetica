@@ -15,6 +15,9 @@ import os
 import json
 import io
 
+# Path delle pagine fisse (template del rapporto, sempre allegate al PDF)
+PAGINE_FISSE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pagine_fisse.pdf')
+
 # Configurazione pagina
 st.set_page_config(
     page_title="Diagnosi Energetica",
@@ -1156,12 +1159,20 @@ elif menu == "📄 Genera Report":
                     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
                     from reportlab.lib.units import cm
                     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
-                    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+                    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
+                    from pypdf import PdfReader, PdfWriter
 
-                    buffer_pdf = io.BytesIO()
-                    doc = SimpleDocTemplate(buffer_pdf, pagesize=A4,
-                                          rightMargin=2*cm, leftMargin=2*cm,
-                                          topMargin=2*cm, bottomMargin=2*cm)
+                    # Tracker pagine sezioni dinamiche
+                    section_pages_dyn = {}
+
+                    class TrackingDoc(SimpleDocTemplate):
+                        def afterFlowable(self, flowable):
+                            if hasattr(flowable, '_bookmark') and flowable._bookmark not in section_pages_dyn:
+                                section_pages_dyn[flowable._bookmark] = self.page
+
+                    def tag(para, name):
+                        para._bookmark = name
+                        return para
 
                     styles = getSampleStyleSheet()
                     styles.add(ParagraphStyle(name='TitoloReport', parent=styles['Title'],
@@ -1172,6 +1183,8 @@ elif menu == "📄 Genera Report":
                     styles.add(ParagraphStyle(name='SezTitolo', parent=styles['Heading1'],
                                             fontSize=14, textColor=colors.HexColor('#1a5276'),
                                             spaceAfter=12, spaceBefore=6))
+                    styles.add(ParagraphStyle(name='IndiceRiga', parent=styles['Normal'],
+                                            fontSize=11, alignment=TA_LEFT, spaceAfter=4, leftIndent=10))
 
                     PRIMARY = colors.HexColor('#2874a6')
                     LIGHT = colors.HexColor('#d5e8d4')
@@ -1195,28 +1208,10 @@ elif menu == "📄 Genera Report":
                         return t
 
                     anag = st.session_state.anagrafica
-                    story = []
+                    story_body = []
 
-                    # ===== 1. COPERTINA =====
-                    story.append(Spacer(1, 3*cm))
-                    story.append(Paragraph("DIAGNOSI ENERGETICA", styles['TitoloReport']))
-                    story.append(Paragraph("ai sensi del D.Lgs. 102/2014 — UNI CEI EN 16247", styles['Heading2']))
-                    story.append(Spacer(1, 2*cm))
-                    story.append(Paragraph(f"<b>{anag.get('ragione_sociale','')}</b>", styles['TitoloReport']))
-                    story.append(Paragraph(f"{anag.get('indirizzo','')}", styles['Normal']))
-                    story.append(Paragraph(f"{anag.get('cap','')} {anag.get('citta','')} ({anag.get('provincia','')})", styles['Normal']))
-                    if anag.get('piva'):
-                        story.append(Paragraph(f"P.IVA: {anag.get('piva','')}", styles['Normal']))
-                    if anag.get('ateco'):
-                        story.append(Paragraph(f"Codice ATECO: {anag.get('ateco','')}", styles['Normal']))
-                    story.append(Spacer(1, 2*cm))
-                    story.append(Paragraph(f"Anno di riferimento: <b>{anag.get('anno_rif','')}</b>", styles['Heading2']))
-                    story.append(Spacer(1, 4*cm))
-                    story.append(Paragraph(f"Documento generato il {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
-                    story.append(PageBreak())
-
-                    # ===== 2. ANAGRAFICA =====
-                    story.append(Paragraph("1. DATI ANAGRAFICI E REGIME OPERATIVO", styles['SezTitolo']))
+                    # ===== SEZIONE 9 — DATI ANAGRAFICI =====
+                    story_body.append(tag(Paragraph("9. DATI ANAGRAFICI E REGIME OPERATIVO", styles['SezTitolo']), 'anagrafica'))
                     data_an = [
                         ['Campo', 'Valore'],
                         ['Ragione Sociale', anag.get('ragione_sociale', '—')],
@@ -1228,11 +1223,12 @@ elif menu == "📄 Genera Report":
                         ['Numero turni', str(anag.get('turni', ''))],
                         ['Ore per turno', str(anag.get('ore_turno', ''))],
                     ]
-                    story.append(make_table(data_an, [5*cm, 11*cm]))
-                    story.append(Spacer(1, 0.8*cm))
+                    story_body.append(make_table(data_an, [5*cm, 11*cm]))
+                    story_body.append(Spacer(1, 0.8*cm))
 
-                    # ===== 3. VETTORI ENERGETICI =====
-                    story.append(Paragraph("2. QUADRO DEI VETTORI ENERGETICI", styles['SezTitolo']))
+                    # ===== SEZIONE 10 — VETTORI ENERGETICI =====
+                    story_body.append(PageBreak())
+                    story_body.append(tag(Paragraph("10. QUADRO DEI VETTORI ENERGETICI", styles['SezTitolo']), 'vettori'))
                     data_sint = [
                         ['Vettore', 'Consumo', 'TEP', 'CO₂ (ton)', 'Costo (€)'],
                         ['Energia Elettrica', f"{totali['ee_kwh']:,.0f} kWh", f"{totali['ee_tep']:.2f}", f"{totali['ee_co2']:.2f}", f"{totali['ee_costo']:,.0f}"],
@@ -1240,8 +1236,8 @@ elif menu == "📄 Genera Report":
                         ['Gasolio', f"{totali['gasolio_l']:,.0f} litri", f"{totali['gasolio_tep']:.2f}", f"{totali['gasolio_co2']:.2f}", f"{totali['gasolio_costo']:,.0f}"],
                         ['TOTALE', '', f"{totali['tep_totale']:.2f}", f"{totali['co2_totale']:.2f}", f"{totali['costo_totale']:,.0f}"],
                     ]
-                    story.append(make_table(data_sint, [4.5*cm, 3.5*cm, 2.5*cm, 2.5*cm, 3*cm], total_row=True))
-                    story.append(Spacer(1, 0.6*cm))
+                    story_body.append(make_table(data_sint, [4.5*cm, 3.5*cm, 2.5*cm, 2.5*cm, 3*cm], total_row=True))
+                    story_body.append(Spacer(1, 0.6*cm))
 
                     # Tabelle mensili dettagliate
                     def _tab_mensile(df_consumi, label_quant, totale_q, totale_c):
@@ -1252,23 +1248,24 @@ elif menu == "📄 Genera Report":
                         return make_table(rows, [4*cm, 4*cm, 4*cm], total_row=True, font_size=8)
 
                     if totali['ee_kwh'] > 0:
-                        story.append(Paragraph("Dettaglio mensile — Energia Elettrica", styles['Heading3']))
-                        story.append(_tab_mensile(st.session_state.consumi_ee, 'kWh', totali['ee_kwh'], totali['ee_costo']))
-                        story.append(Spacer(1, 0.4*cm))
+                        story_body.append(Paragraph("Dettaglio mensile — Energia Elettrica", styles['Heading3']))
+                        story_body.append(_tab_mensile(st.session_state.consumi_ee, 'kWh', totali['ee_kwh'], totali['ee_costo']))
+                        story_body.append(Spacer(1, 0.4*cm))
                     if totali['gas_smc'] > 0:
-                        story.append(Paragraph("Dettaglio mensile — Gas Naturale", styles['Heading3']))
-                        story.append(_tab_mensile(st.session_state.consumi_gas, 'Smc', totali['gas_smc'], totali['gas_costo']))
-                        story.append(Spacer(1, 0.4*cm))
+                        story_body.append(Paragraph("Dettaglio mensile — Gas Naturale", styles['Heading3']))
+                        story_body.append(_tab_mensile(st.session_state.consumi_gas, 'Smc', totali['gas_smc'], totali['gas_costo']))
+                        story_body.append(Spacer(1, 0.4*cm))
                     if totali['gasolio_l'] > 0:
-                        story.append(Paragraph("Dettaglio mensile — Gasolio", styles['Heading3']))
-                        story.append(_tab_mensile(st.session_state.consumi_gasolio, 'Litri', totali['gasolio_l'], totali['gasolio_costo']))
-                        story.append(Spacer(1, 0.4*cm))
+                        story_body.append(Paragraph("Dettaglio mensile — Gasolio", styles['Heading3']))
+                        story_body.append(_tab_mensile(st.session_state.consumi_gasolio, 'Litri', totali['gasolio_l'], totali['gasolio_costo']))
+                        story_body.append(Spacer(1, 0.4*cm))
 
-                    # ===== 4. FOTOVOLTAICO =====
+                    # ===== SEZIONE 11 — FOTOVOLTAICO =====
                     fv = st.session_state.fotovoltaico
-                    if fv.get('potenza_kwp', 0) > 0:
-                        story.append(PageBreak())
-                        story.append(Paragraph("3. IMPIANTO FOTOVOLTAICO", styles['SezTitolo']))
+                    has_fv = fv.get('potenza_kwp', 0) > 0
+                    if has_fv:
+                        story_body.append(PageBreak())
+                        story_body.append(tag(Paragraph("11. IMPIANTO FOTOVOLTAICO", styles['SezTitolo']), 'fotovoltaico'))
                         autoconsumo_kwh = fv['produzione_annua'] * fv['autoconsumo_perc'] / 100
                         immissione_kwh = fv['produzione_annua'] - autoconsumo_kwh
                         data_fv = [
@@ -1279,17 +1276,18 @@ elif menu == "📄 Genera Report":
                             ['Autoconsumo', f"{fv['autoconsumo_perc']}% — {autoconsumo_kwh:,.0f} kWh"],
                             ['Immissione in rete', f"{immissione_kwh:,.0f} kWh"],
                         ]
-                        story.append(make_table(data_fv, [6*cm, 10*cm]))
-                        story.append(Spacer(1, 0.6*cm))
+                        story_body.append(make_table(data_fv, [6*cm, 10*cm]))
+                        story_body.append(Spacer(1, 0.6*cm))
 
-                    # ===== 5. BILANCIO ENERGETICO =====
+                    # ===== SEZIONE 12 — BILANCIO ENERGETICO =====
                     df_bil = calcola_bilancio()
-                    if not df_bil.empty and df_bil['kWh/anno'].sum() > 0:
-                        story.append(PageBreak())
-                        story.append(Paragraph("4. BILANCIO ENERGETICO", styles['SezTitolo']))
+                    has_bil = (not df_bil.empty) and df_bil['kWh/anno'].sum() > 0
+                    if has_bil:
+                        story_body.append(PageBreak())
+                        story_body.append(tag(Paragraph("12. BILANCIO ENERGETICO", styles['SezTitolo']), 'bilancio'))
 
                         # Dettaglio per area
-                        story.append(Paragraph("Dettaglio per utenza", styles['Heading3']))
+                        story_body.append(Paragraph("Dettaglio per utenza", styles['Heading3']))
                         data_b = [['Categoria', 'Descrizione', 'Vettore', 'kWh/anno', 'Consumo', 'TEP']]
                         for _, r in df_bil.iterrows():
                             data_b.append([
@@ -1300,38 +1298,39 @@ elif menu == "📄 Genera Report":
                                 f"{r['Consumo']:,.1f} {r['Unità']}",
                                 f"{r['TEP']:.2f}",
                             ])
-                        story.append(make_table(data_b, [3.5*cm, 3.5*cm, 3*cm, 2.2*cm, 2.5*cm, 1.8*cm], font_size=8))
-                        story.append(Spacer(1, 0.5*cm))
+                        story_body.append(make_table(data_b, [3.5*cm, 3.5*cm, 3*cm, 2.2*cm, 2.5*cm, 1.8*cm], font_size=8))
+                        story_body.append(Spacer(1, 0.5*cm))
 
                         # Per categoria
-                        story.append(Paragraph("Riepilogo per categoria", styles['Heading3']))
+                        story_body.append(Paragraph("Riepilogo per categoria", styles['Heading3']))
                         riep_cat = df_bil.groupby('Categoria').agg({'kWh/anno': 'sum', 'TEP': 'sum'}).reset_index()
                         rows_c = [['Categoria', 'kWh/anno', 'TEP']]
                         for _, r in riep_cat.iterrows():
                             rows_c.append([r['Categoria'], f"{r['kWh/anno']:,.0f}", f"{r['TEP']:.2f}"])
                         rows_c.append(['TOTALE', f"{df_bil['kWh/anno'].sum():,.0f}", f"{df_bil['TEP'].sum():.2f}"])
-                        story.append(make_table(rows_c, [7*cm, 4*cm, 3*cm], total_row=True))
-                        story.append(Spacer(1, 0.4*cm))
+                        story_body.append(make_table(rows_c, [7*cm, 4*cm, 3*cm], total_row=True))
+                        story_body.append(Spacer(1, 0.4*cm))
 
                         # Per vettore
-                        story.append(Paragraph("Riepilogo per vettore", styles['Heading3']))
+                        story_body.append(Paragraph("Riepilogo per vettore", styles['Heading3']))
                         riep_vet = df_bil.groupby(['Vettore', 'Unità']).agg({'Consumo': 'sum', 'TEP': 'sum'}).reset_index()
                         rows_v = [['Vettore', 'Consumo', 'Unità', 'TEP']]
                         for _, r in riep_vet.iterrows():
                             rows_v.append([r['Vettore'], f"{r['Consumo']:,.1f}", r['Unità'], f"{r['TEP']:.2f}"])
-                        story.append(make_table(rows_v, [5*cm, 4*cm, 2.5*cm, 3*cm]))
-                        story.append(Spacer(1, 0.5*cm))
+                        story_body.append(make_table(rows_v, [5*cm, 4*cm, 2.5*cm, 3*cm]))
+                        story_body.append(Spacer(1, 0.5*cm))
 
-                    # ===== 6. INDICI ENERGETICI =====
-                    if 'indici_calcolati' in st.session_state and not st.session_state.indici_calcolati.empty:
-                        story.append(PageBreak())
-                        story.append(Paragraph("5. INDICI DI PRESTAZIONE ENERGETICA", styles['SezTitolo']))
+                    # ===== SEZIONE 13 — INDICI ENERGETICI =====
+                    has_idx = 'indici_calcolati' in st.session_state and not st.session_state.indici_calcolati.empty
+                    if has_idx:
+                        story_body.append(PageBreak())
+                        story_body.append(tag(Paragraph("13. INDICI DI PRESTAZIONE ENERGETICA", styles['SezTitolo']), 'indici'))
                         df_idx = st.session_state.indici_calcolati
                         for cat in ["ATTIVITA PRINCIPALI", "SERVIZI AUSILIARI", "SERVIZI GENERALI"]:
                             group = df_idx[df_idx['Categoria'] == cat]
                             if group.empty:
                                 continue
-                            story.append(Paragraph(cat, styles['Heading3']))
+                            story_body.append(Paragraph(cat, styles['Heading3']))
                             rows_i = [['Attività', 'Vettore', 'Valore', 'Unità', 'Calcolo']]
                             for _, r in group.iterrows():
                                 rows_i.append([
@@ -1341,13 +1340,14 @@ elif menu == "📄 Genera Report":
                                     str(r['Unità indice']),
                                     str(r['Calcolo'])[:30],
                                 ])
-                            story.append(make_table(rows_i, [4*cm, 3*cm, 2.5*cm, 2.5*cm, 4*cm], font_size=8))
-                            story.append(Spacer(1, 0.4*cm))
+                            story_body.append(make_table(rows_i, [4*cm, 3*cm, 2.5*cm, 2.5*cm, 4*cm], font_size=8))
+                            story_body.append(Spacer(1, 0.4*cm))
 
-                    # ===== 7. INTERVENTI =====
-                    if st.session_state.interventi:
-                        story.append(PageBreak())
-                        story.append(Paragraph("6. INTERVENTI DI EFFICIENTAMENTO ENERGETICO", styles['SezTitolo']))
+                    # ===== SEZIONE 14 — INTERVENTI =====
+                    has_int = bool(st.session_state.interventi)
+                    if has_int:
+                        story_body.append(PageBreak())
+                        story_body.append(tag(Paragraph("14. INTERVENTI DI EFFICIENTAMENTO ENERGETICO", styles['SezTitolo']), 'interventi'))
 
                         # Tabella sintetica
                         rows_int = [['Intervento', 'Vettore', 'Investim.', 'Risparmio €/a', 'PB (a)', 'VAN (€)']]
@@ -1360,12 +1360,12 @@ elif menu == "📄 Genera Report":
                                 f"{interv['payback']:.1f}",
                                 f"€ {interv['van']:,.0f}",
                             ])
-                        story.append(make_table(rows_int, [4.5*cm, 2.5*cm, 2.3*cm, 2.5*cm, 1.5*cm, 2.5*cm], font_size=8))
-                        story.append(Spacer(1, 0.5*cm))
+                        story_body.append(make_table(rows_int, [4.5*cm, 2.5*cm, 2.3*cm, 2.5*cm, 1.5*cm, 2.5*cm], font_size=8))
+                        story_body.append(Spacer(1, 0.5*cm))
 
                         # Dettaglio per ogni intervento
                         for idx, interv in enumerate(st.session_state.interventi, 1):
-                            story.append(Paragraph(f"Intervento {idx}: {interv['nome']}", styles['Heading3']))
+                            story_body.append(Paragraph(f"Intervento {idx}: {interv['nome']}", styles['Heading3']))
                             data_d = [
                                 ['Voce', 'Valore'],
                                 ['Vettore risparmiato', interv['vettore']],
@@ -1378,17 +1378,17 @@ elif menu == "📄 Genera Report":
                                 ['Tempo di ritorno (Payback)', f"{interv['payback']:.1f} anni"],
                                 ['VAN', f"€ {interv['van']:,.2f}"],
                             ]
-                            story.append(make_table(data_d, [6*cm, 10*cm], font_size=9))
+                            story_body.append(make_table(data_d, [6*cm, 10*cm], font_size=9))
                             if interv.get('note'):
-                                story.append(Spacer(1, 0.2*cm))
-                                story.append(Paragraph(f"<i>Note:</i> {interv['note']}", styles['Body']))
-                            story.append(Spacer(1, 0.4*cm))
+                                story_body.append(Spacer(1, 0.2*cm))
+                                story_body.append(Paragraph(f"<i>Note:</i> {interv['note']}", styles['Body']))
+                            story_body.append(Spacer(1, 0.4*cm))
 
-                    # ===== 8. CONCLUSIONI =====
-                    story.append(PageBreak())
-                    story.append(Paragraph("7. CONCLUSIONI E SINTESI", styles['SezTitolo']))
+                    # ===== SEZIONE 15 — CONCLUSIONI =====
+                    story_body.append(PageBreak())
+                    story_body.append(tag(Paragraph("15. CONCLUSIONI E SINTESI", styles['SezTitolo']), 'conclusioni'))
 
-                    story.append(Paragraph(
+                    story_body.append(Paragraph(
                         f"L'azienda <b>{anag.get('ragione_sociale','')}</b> nell'anno di riferimento <b>{anag.get('anno_rif','')}</b> ha consumato complessivamente <b>{totali['tep_totale']:.2f} TEP</b> "
                         f"per una spesa totale di <b>€ {totali['costo_totale']:,.0f}</b>, con emissioni stimate di "
                         f"<b>{totali['co2_totale']:.2f} tonnellate</b> di CO₂.",
@@ -1400,16 +1400,16 @@ elif menu == "📄 Genera Report":
                         tot_risp = sum(i['risparmio_euro'] for i in st.session_state.interventi)
                         tot_van = sum(i['van'] for i in st.session_state.interventi)
                         pb_glob = tot_inv / tot_risp if tot_risp > 0 else 0
-                        story.append(Spacer(1, 0.3*cm))
-                        story.append(Paragraph(
+                        story_body.append(Spacer(1, 0.3*cm))
+                        story_body.append(Paragraph(
                             f"Sono stati proposti <b>{len(st.session_state.interventi)} interventi</b> di efficientamento, "
                             f"per un investimento complessivo di <b>€ {tot_inv:,.0f}</b> e un risparmio annuo di "
                             f"<b>€ {tot_risp:,.0f}</b> (Payback medio {pb_glob:.1f} anni, VAN totale € {tot_van:,.0f}).",
                             styles['Body']
                         ))
 
-                    story.append(Spacer(1, 0.6*cm))
-                    story.append(Paragraph("Riepilogo finale", styles['Heading3']))
+                    story_body.append(Spacer(1, 0.6*cm))
+                    story_body.append(Paragraph("Riepilogo finale", styles['Heading3']))
                     rows_fin = [
                         ['Indicatore', 'Valore'],
                         ['Energia totale', f"{totali['tep_totale']:.2f} TEP"],
@@ -1419,21 +1419,137 @@ elif menu == "📄 Genera Report":
                     if st.session_state.interventi:
                         rows_fin.append(['Investimenti proposti', f"€ {sum(i['costo_inv'] for i in st.session_state.interventi):,.0f}"])
                         rows_fin.append(['Risparmio annuo atteso', f"€ {sum(i['risparmio_euro'] for i in st.session_state.interventi):,.0f}"])
-                    story.append(make_table(rows_fin, [8*cm, 8*cm]))
+                    story_body.append(make_table(rows_fin, [8*cm, 8*cm]))
 
-                    story.append(Spacer(1, 1*cm))
-                    story.append(Paragraph(
+                    story_body.append(Spacer(1, 1*cm))
+                    story_body.append(Paragraph(
                         "<i>Il presente report è stato redatto ai sensi del D.Lgs. 102/2014 e della norma UNI CEI EN 16247. "
                         "I dati riportati sono ricavati dalle bollette dell'anno di riferimento e dalle stime di bilancio energetico.</i>",
                         styles['Body']
                     ))
 
-                    doc.build(story)
+                    # ===== STEP 1: build del corpo dinamico (per tracciare numeri pagina) =====
+                    buffer_body = io.BytesIO()
+                    doc_body = TrackingDoc(buffer_body, pagesize=A4,
+                                          rightMargin=2*cm, leftMargin=2*cm,
+                                          topMargin=2*cm, bottomMargin=2*cm)
+                    doc_body.build(story_body)
+
+                    # Numero di pagine fisse e calcolo offset (Cover=1, Indice=1, Pagine fisse=N_fisse)
+                    n_fisse = 0
+                    if os.path.exists(PAGINE_FISSE_PATH):
+                        try:
+                            n_fisse = len(PdfReader(PAGINE_FISSE_PATH).pages)
+                        except Exception:
+                            n_fisse = 0
+
+                    OFFSET_DYN = 2 + n_fisse  # cover + indice + pagine fisse
+
+                    # ===== STEP 2: build copertina + indice =====
+                    buffer_cover = io.BytesIO()
+                    doc_cover = SimpleDocTemplate(buffer_cover, pagesize=A4,
+                                                  rightMargin=2*cm, leftMargin=2*cm,
+                                                  topMargin=2*cm, bottomMargin=2*cm)
+                    story_cover = []
+
+                    # Copertina
+                    story_cover.append(Spacer(1, 3*cm))
+                    story_cover.append(Paragraph("DIAGNOSI ENERGETICA", styles['TitoloReport']))
+                    story_cover.append(Paragraph("ai sensi del D.Lgs. 102/2014 — UNI CEI EN 16247", styles['Heading2']))
+                    story_cover.append(Spacer(1, 2*cm))
+                    story_cover.append(Paragraph(f"<b>{anag.get('ragione_sociale','')}</b>", styles['TitoloReport']))
+                    story_cover.append(Paragraph(f"{anag.get('indirizzo','')}", styles['Normal']))
+                    story_cover.append(Paragraph(f"{anag.get('cap','')} {anag.get('citta','')} ({anag.get('provincia','')})", styles['Normal']))
+                    if anag.get('piva'):
+                        story_cover.append(Paragraph(f"P.IVA: {anag.get('piva','')}", styles['Normal']))
+                    if anag.get('ateco'):
+                        story_cover.append(Paragraph(f"Codice ATECO: {anag.get('ateco','')}", styles['Normal']))
+                    story_cover.append(Spacer(1, 2*cm))
+                    story_cover.append(Paragraph(f"Anno di riferimento: <b>{anag.get('anno_rif','')}</b>", styles['Heading2']))
+                    story_cover.append(Spacer(1, 4*cm))
+                    story_cover.append(Paragraph(f"Documento generato il {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
+                    story_cover.append(PageBreak())
+
+                    # Indice
+                    story_cover.append(Paragraph("INDICE", styles['SezTitolo']))
+
+                    # Voci pagine fisse (note dal contenuto del PDF template)
+                    # I numeri di pagina partono da 3 (dopo cover + indice)
+                    indice_rows = [
+                        ['#', 'Sezione', 'Pagina'],
+                        ['', 'Copertina', '1'],
+                        ['', 'Indice', '2'],
+                    ]
+                    if n_fisse > 0:
+                        # Mappa sezioni delle pagine fisse — pagina = 3 + (offset interno)
+                        fisse_voci = [
+                            ('1.', 'Premessa', 3),
+                            ('2.', 'Overview', 4),
+                            ('3.', 'Glossario', 9),
+                            ('4.', 'Unità di misura', 13),
+                            ('5.', 'Gruppo Finservice', 14),
+                            ('6.', 'Informazioni', 15),
+                            ('7.', 'Fase 2 — Audit', 16),
+                            ('8.', 'Fase 3 — Reporting', 17),
+                        ]
+                        for num, titolo, p in fisse_voci:
+                            if p <= 2 + n_fisse:
+                                indice_rows.append([num, titolo, str(p)])
+
+                    # Voci sezioni dinamiche (numeri pagina dal tracking + offset)
+                    voci_dyn = [
+                        ('9.', 'Dati Anagrafici e Regime Operativo', 'anagrafica'),
+                        ('10.', 'Quadro dei Vettori Energetici', 'vettori'),
+                    ]
+                    if has_fv:
+                        voci_dyn.append(('11.', 'Impianto Fotovoltaico', 'fotovoltaico'))
+                    if has_bil:
+                        voci_dyn.append(('12.', 'Bilancio Energetico', 'bilancio'))
+                    if has_idx:
+                        voci_dyn.append(('13.', 'Indici di Prestazione Energetica', 'indici'))
+                    if has_int:
+                        voci_dyn.append(('14.', 'Interventi di Efficientamento', 'interventi'))
+                    voci_dyn.append(('15.', 'Conclusioni e Sintesi', 'conclusioni'))
+
+                    for num, titolo, key in voci_dyn:
+                        p = section_pages_dyn.get(key, 1) + OFFSET_DYN
+                        indice_rows.append([num, titolo, str(p)])
+
+                    t_indice = Table(indice_rows, colWidths=[1.5*cm, 12*cm, 2.5*cm], repeatRows=1)
+                    t_indice.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), PRIMARY),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
+                        ('FONTSIZE', (0, 0), (-1, -1), 10),
+                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+                        ('ALIGN', (2, 0), (2, -1), 'CENTER'),
+                        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f4f6f7')]),
+                    ]))
+                    story_cover.append(t_indice)
+
+                    doc_cover.build(story_cover)
+
+                    # ===== STEP 3: merge finale (cover+indice + pagine fisse + body dinamico) =====
+                    writer = PdfWriter()
+                    buffer_cover.seek(0)
+                    for page in PdfReader(buffer_cover).pages:
+                        writer.add_page(page)
+                    if n_fisse > 0 and os.path.exists(PAGINE_FISSE_PATH):
+                        for page in PdfReader(PAGINE_FISSE_PATH).pages:
+                            writer.add_page(page)
+                    buffer_body.seek(0)
+                    for page in PdfReader(buffer_body).pages:
+                        writer.add_page(page)
+
+                    buffer_pdf = io.BytesIO()
+                    writer.write(buffer_pdf)
                     buffer_pdf.seek(0)
 
                     st.session_state.pdf_data = buffer_pdf.getvalue()
                     st.session_state.pdf_filename = f"REPORT_DE_{nome_azienda}_{anag.get('anno_rif','')}.pdf"
-                    st.success("✓ File PDF generato!")
+                    st.success(f"✓ File PDF generato! ({len(writer.pages)} pagine totali — copertina + indice + {n_fisse} pagine fisse + sezioni dinamiche)")
 
                 except Exception as e:
                     st.error(f"Errore nella generazione del PDF: {e}")
