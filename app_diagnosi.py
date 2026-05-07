@@ -349,25 +349,49 @@ if 'json_data' in st.session_state:
 
 uploaded = st.sidebar.file_uploader("Carica progetto (.json)", type="json", key="sidebar_uploader")
 if uploaded is not None:
-    progetto = json.load(uploaded)
-    st.session_state.anagrafica = progetto['anagrafica']
-    st.session_state.consumi_ee = pd.DataFrame(progetto['consumi_ee'])
-    st.session_state.consumi_gas = pd.DataFrame(progetto['consumi_gas'])
-    st.session_state.consumi_gasolio = pd.DataFrame(progetto['consumi_gasolio'])
-    st.session_state.bilancio = pd.DataFrame(progetto['bilancio'])
-    st.session_state.interventi = progetto['interventi']
-    st.session_state.fotovoltaico = progetto['fotovoltaico']
-    # Compatibilità retroattiva: i campi nuovi possono mancare nei JSON vecchi
-    if 'driver_energetici' in progetto:
-        st.session_state.driver_energetici = pd.DataFrame(progetto['driver_energetici'])
-    if 'indici_consumi' in progetto:
-        st.session_state.indici_consumi = pd.DataFrame(progetto['indici_consumi'])
-    # Reset chiavi widget così verranno reinizializzate dai nuovi dati
-    for k in list(st.session_state.keys()):
-        if isinstance(k, str) and (k.startswith('anag_') or k.startswith('fv_') or k.startswith('int_') or k == 'anno_sidebar' or k.startswith('indici_')):
-            del st.session_state[k]
-    st.sidebar.success("✓ Progetto caricato!")
-    st.rerun()
+    try:
+        progetto = json.load(uploaded)
+
+        def _clean_df(df, defaults=None):
+            """Rimuove righe completamente vuote e riempie NaN con default coerenti."""
+            df = df.dropna(how='all').copy()
+            defaults = defaults or {}
+            for col in df.columns:
+                if df[col].dtype == 'object':
+                    df[col] = df[col].fillna(defaults.get(col, ''))
+                else:
+                    df[col] = df[col].fillna(defaults.get(col, 0.0))
+            return df.reset_index(drop=True)
+
+        st.session_state.anagrafica = progetto['anagrafica']
+        st.session_state.consumi_ee = _clean_df(pd.DataFrame(progetto['consumi_ee']))
+        st.session_state.consumi_gas = _clean_df(pd.DataFrame(progetto['consumi_gas']))
+        st.session_state.consumi_gasolio = _clean_df(pd.DataFrame(progetto['consumi_gasolio']))
+        st.session_state.bilancio = _clean_df(
+            pd.DataFrame(progetto['bilancio']),
+            defaults={'Fattore carico': 0.5, 'C.C.': 1.0, 'Vettore': 'Energia Elettrica', 'Categoria': 'ALTRO'},
+        )
+        st.session_state.interventi = progetto.get('interventi', [])
+        st.session_state.fotovoltaico = progetto['fotovoltaico']
+        # Compatibilità retroattiva: i campi nuovi possono mancare nei JSON vecchi
+        if 'driver_energetici' in progetto:
+            st.session_state.driver_energetici = _clean_df(
+                pd.DataFrame(progetto['driver_energetici']),
+                defaults={'Categoria': 'Generale', 'Unità': 'mq'},
+            )
+        if 'indici_consumi' in progetto:
+            st.session_state.indici_consumi = _clean_df(
+                pd.DataFrame(progetto['indici_consumi']),
+                defaults={'Vettore': 'Energia Elettrica', 'Unità consumo': 'kWh', 'Categoria': 'SERVIZI GENERALI'},
+            )
+        # Reset chiavi widget così verranno reinizializzate dai nuovi dati
+        for k in list(st.session_state.keys()):
+            if isinstance(k, str) and (k.startswith('anag_') or k.startswith('fv_') or k.startswith('int_') or k == 'anno_sidebar' or k.startswith('indici_')):
+                del st.session_state[k]
+        st.sidebar.success("✓ Progetto caricato!")
+        st.rerun()
+    except Exception as e:
+        st.sidebar.error(f"Errore nel caricamento: {e}")
 
 
 # === PAGINE ===
