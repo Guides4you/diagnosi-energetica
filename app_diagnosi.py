@@ -512,19 +512,26 @@ elif menu == "📊 Consumi EE":
 
     st.markdown("Inserisci i consumi mensili di energia elettrica.")
 
-    # Editor tabella
-    edited_df = st.data_editor(
-        st.session_state.consumi_ee,
-        num_rows="fixed",
-        use_container_width=True,
-        key="editor_consumi_ee",
-        column_config={
-            "Mese": st.column_config.TextColumn("Mese", disabled=True),
-            "kWh": st.column_config.NumberColumn("kWh", min_value=0, format="%.2f"),
-            "Costo (€)": st.column_config.NumberColumn("Costo (€)", min_value=0, format="%.2f"),
-        }
-    )
-    st.session_state.consumi_ee = edited_df
+    with st.form("form_consumi_ee", clear_on_submit=False, border=False):
+        edited_df = st.data_editor(
+            st.session_state.consumi_ee,
+            num_rows="fixed",
+            use_container_width=True,
+            key="editor_consumi_ee",
+            column_config={
+                "Mese": st.column_config.TextColumn("Mese", disabled=True),
+                "kWh": st.column_config.NumberColumn("kWh", format="%.2f"),
+                "Costo (€)": st.column_config.NumberColumn("Costo (€)", format="%.2f"),
+            }
+        )
+        col_submit, _ = st.columns([1, 4])
+        if col_submit.form_submit_button("💾 Salva consumi EE", use_container_width=True, type="primary"):
+            st.session_state.consumi_ee = edited_df
+            st.success("✓ Consumi EE salvati")
+            st.rerun()
+        else:
+            # Mantieni il valore già confermato per i calcoli a valle
+            edited_df = st.session_state.consumi_ee
 
     # Totali
     tot_kwh = edited_df['kWh'].sum()
@@ -549,18 +556,25 @@ elif menu == "🔥 Consumi Gas":
 
     st.markdown("Inserisci i consumi mensili di gas naturale.")
 
-    edited_df = st.data_editor(
-        st.session_state.consumi_gas,
-        num_rows="fixed",
-        use_container_width=True,
-        key="editor_consumi_gas",
-        column_config={
-            "Mese": st.column_config.TextColumn("Mese", disabled=True),
-            "Smc": st.column_config.NumberColumn("Smc", min_value=0, format="%.2f"),
-            "Costo (€)": st.column_config.NumberColumn("Costo (€)", min_value=0, format="%.2f"),
-        }
-    )
-    st.session_state.consumi_gas = edited_df
+    with st.form("form_consumi_gas", clear_on_submit=False, border=False):
+        edited_df = st.data_editor(
+            st.session_state.consumi_gas,
+            num_rows="fixed",
+            use_container_width=True,
+            key="editor_consumi_gas",
+            column_config={
+                "Mese": st.column_config.TextColumn("Mese", disabled=True),
+                "Smc": st.column_config.NumberColumn("Smc", format="%.2f"),
+                "Costo (€)": st.column_config.NumberColumn("Costo (€)", format="%.2f"),
+            }
+        )
+        col_submit, _ = st.columns([1, 4])
+        if col_submit.form_submit_button("💾 Salva consumi Gas", use_container_width=True, type="primary"):
+            st.session_state.consumi_gas = edited_df
+            st.success("✓ Consumi Gas salvati")
+            st.rerun()
+        else:
+            edited_df = st.session_state.consumi_gas
 
     tot_smc = edited_df['Smc'].sum()
     tot_costo = edited_df['Costo (€)'].sum()
@@ -581,18 +595,25 @@ elif menu == "⛽ Consumi Gasolio":
 
     st.markdown("Inserisci i consumi mensili di gasolio.")
 
-    edited_df = st.data_editor(
-        st.session_state.consumi_gasolio,
-        num_rows="fixed",
-        use_container_width=True,
-        key="editor_consumi_gasolio",
-        column_config={
-            "Mese": st.column_config.TextColumn("Mese", disabled=True),
-            "Litri": st.column_config.NumberColumn("Litri", min_value=0, format="%.2f"),
-            "Costo (€)": st.column_config.NumberColumn("Costo (€)", min_value=0, format="%.2f"),
-        }
-    )
-    st.session_state.consumi_gasolio = edited_df
+    with st.form("form_consumi_gasolio", clear_on_submit=False, border=False):
+        edited_df = st.data_editor(
+            st.session_state.consumi_gasolio,
+            num_rows="fixed",
+            use_container_width=True,
+            key="editor_consumi_gasolio",
+            column_config={
+                "Mese": st.column_config.TextColumn("Mese", disabled=True),
+                "Litri": st.column_config.NumberColumn("Litri", format="%.2f"),
+                "Costo (€)": st.column_config.NumberColumn("Costo (€)", format="%.2f"),
+            }
+        )
+        col_submit, _ = st.columns([1, 4])
+        if col_submit.form_submit_button("💾 Salva consumi Gasolio", use_container_width=True, type="primary"):
+            st.session_state.consumi_gasolio = edited_df
+            st.success("✓ Consumi Gasolio salvati")
+            st.rerun()
+        else:
+            edited_df = st.session_state.consumi_gasolio
 
     tot_litri = edited_df['Litri'].sum()
     tot_costo = edited_df['Costo (€)'].sum()
@@ -692,36 +713,43 @@ elif menu == "⚖️ Bilancio Energetico":
     if list(st.session_state.bilancio.columns) != available:
         st.session_state.bilancio = st.session_state.bilancio[available]
 
-    # Editor
-    edited_df = st.data_editor(
-        st.session_state.bilancio,
-        num_rows="dynamic",
-        use_container_width=True,
-        key="editor_bilancio",
-        column_config={
-            "Categoria": st.column_config.SelectboxColumn(
-                "Categoria",
-                options=["ATTIVITA PRINCIPALI", "SERVIZI AUSILIARI", "SERVIZI GENERALI", "ALTRO"]
-            ),
-            "Descrizione": st.column_config.TextColumn("Descrizione"),
-            "Vettore": st.column_config.SelectboxColumn(
-                "Vettore",
-                options=["Energia Elettrica", "Gas Naturale", "Gasolio", "Altro"],
-                help="Vettore energetico associato all'utenza",
-            ),
-            "Potenza": st.column_config.NumberColumn("Potenza", min_value=0, format="%.2f", help="Valore numerico della potenza nominale"),
-            "Unità Potenza": st.column_config.SelectboxColumn(
-                "Unità",
-                options=POTENZA_UNITS,
-                help="Unità di misura della potenza. Conversione automatica a kW per il calcolo.",
-            ),
-            "Ore/giorno": st.column_config.NumberColumn("Ore/giorno", min_value=0, max_value=24, format="%.1f"),
-            "Giorni/anno": st.column_config.NumberColumn("Giorni/anno", min_value=0, max_value=365),
-            "Fattore carico": st.column_config.NumberColumn("Fc (carico)", min_value=0, max_value=1, format="%.2f", help="Fattore di carico: frazione di potenza media rispetto alla nominale"),
-            "C.C.": st.column_config.NumberColumn("C.C. (contemp.)", min_value=0, max_value=1, format="%.2f", help="Fattore di contemporaneità: frazione di tempo in cui l'utenza è attiva contemporaneamente"),
-        }
-    )
-    st.session_state.bilancio = edited_df
+    # Editor in form
+    with st.form("form_bilancio", clear_on_submit=False, border=False):
+        edited_df = st.data_editor(
+            st.session_state.bilancio,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="editor_bilancio",
+            column_config={
+                "Categoria": st.column_config.SelectboxColumn(
+                    "Categoria",
+                    options=["ATTIVITA PRINCIPALI", "SERVIZI AUSILIARI", "SERVIZI GENERALI", "ALTRO"]
+                ),
+                "Descrizione": st.column_config.TextColumn("Descrizione"),
+                "Vettore": st.column_config.SelectboxColumn(
+                    "Vettore",
+                    options=["Energia Elettrica", "Gas Naturale", "Gasolio", "Altro"],
+                    help="Vettore energetico associato all'utenza",
+                ),
+                "Potenza": st.column_config.NumberColumn("Potenza", format="%.2f", help="Valore numerico della potenza nominale"),
+                "Unità Potenza": st.column_config.SelectboxColumn(
+                    "Unità",
+                    options=POTENZA_UNITS,
+                    help="Unità di misura della potenza. Conversione automatica a kW per il calcolo.",
+                ),
+                "Ore/giorno": st.column_config.NumberColumn("Ore/giorno", min_value=0, max_value=24, format="%.1f"),
+                "Giorni/anno": st.column_config.NumberColumn("Giorni/anno", min_value=0, max_value=365),
+                "Fattore carico": st.column_config.NumberColumn("Fc (carico)", min_value=0, max_value=1, format="%.2f", help="Fattore di carico: frazione di potenza media rispetto alla nominale"),
+                "C.C.": st.column_config.NumberColumn("C.C. (contemp.)", min_value=0, max_value=1, format="%.2f", help="Fattore di contemporaneità: frazione di tempo in cui l'utenza è attiva contemporaneamente"),
+            }
+        )
+        col_submit, _ = st.columns([1, 4])
+        if col_submit.form_submit_button("💾 Salva bilancio", use_container_width=True, type="primary"):
+            st.session_state.bilancio = edited_df
+            st.success("✓ Bilancio salvato")
+            st.rerun()
+        else:
+            edited_df = st.session_state.bilancio
 
     st.caption(f"ℹ️ Potenza convertita automaticamente in kW (kVA·0.9, CV·0.7355, kcal/h·0.001163, ecc.). "
                f"Conversione kWh termici → Smc tramite PCI gas {PCI_GAS_KWH_PER_SMC} kWh/Smc, → litri PCI gasolio {PCI_GASOLIO_KWH_PER_L} kWh/litro. "
@@ -791,26 +819,33 @@ elif menu == "📐 Indici Energetici":
     st.markdown("### 1️⃣ Driver di consumo")
     st.caption("I driver sono le grandezze che 'spiegano' il consumo: superficie, produzione, addetti, ore di funzionamento, ecc.")
 
-    driver_df = st.data_editor(
-        st.session_state.driver_energetici,
-        num_rows="dynamic",
-        use_container_width=True,
-        key="indici_driver_editor",
-        column_config={
-            "Nome": st.column_config.TextColumn("Nome", help="Es: 'Superficie riscaldata', 'Produzione pane'"),
-            "Quantità": st.column_config.NumberColumn("Quantità", min_value=0.0, format="%.2f"),
-            "Unità": st.column_config.SelectboxColumn(
-                "Unità",
-                options=["mq", "mc", "kg", "ton", "pz", "n", "ore", "addetti", "litri"],
-            ),
-            "Categoria": st.column_config.SelectboxColumn(
-                "Categoria",
-                options=["Principale", "Ausiliario", "Generale"],
-                help="Tipo di attività che il driver caratterizza",
-            ),
-        },
-    )
-    st.session_state.driver_energetici = driver_df
+    with st.form("form_driver", clear_on_submit=False, border=False):
+        driver_df = st.data_editor(
+            st.session_state.driver_energetici,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="indici_driver_editor",
+            column_config={
+                "Nome": st.column_config.TextColumn("Nome", help="Es: 'Superficie riscaldata', 'Produzione pane'"),
+                "Quantità": st.column_config.NumberColumn("Quantità", format="%.2f"),
+                "Unità": st.column_config.SelectboxColumn(
+                    "Unità",
+                    options=["mq", "mc", "kg", "ton", "pz", "n", "ore", "addetti", "litri"],
+                ),
+                "Categoria": st.column_config.SelectboxColumn(
+                    "Categoria",
+                    options=["Principale", "Ausiliario", "Generale"],
+                    help="Tipo di attività che il driver caratterizza",
+                ),
+            },
+        )
+        col_s, _ = st.columns([1, 4])
+        if col_s.form_submit_button("💾 Salva driver", use_container_width=True, type="primary"):
+            st.session_state.driver_energetici = driver_df
+            st.success("✓ Driver salvati")
+            st.rerun()
+        else:
+            driver_df = st.session_state.driver_energetici
 
     # --- CONSUMI
     st.markdown("### 2️⃣ Consumi per attività")
@@ -820,34 +855,41 @@ elif menu == "📐 Indici Energetici":
     if not driver_options:
         driver_options = ['—']
 
-    indici_df = st.data_editor(
-        st.session_state.indici_consumi,
-        num_rows="dynamic",
-        use_container_width=True,
-        key="indici_consumi_editor",
-        column_config={
-            "Attività": st.column_config.TextColumn("Attività", help="Es: 'Cottura', 'Climatizzazione uffici'"),
-            "Categoria": st.column_config.SelectboxColumn(
-                "Categoria",
-                options=["ATTIVITA PRINCIPALI", "SERVIZI AUSILIARI", "SERVIZI GENERALI"],
-            ),
-            "Vettore": st.column_config.SelectboxColumn(
-                "Vettore",
-                options=["Energia Elettrica", "Gas Naturale", "Gasolio", "Altro"],
-            ),
-            "Consumo annuo": st.column_config.NumberColumn("Consumo annuo", min_value=0.0, format="%.2f"),
-            "Unità consumo": st.column_config.SelectboxColumn(
-                "Unità consumo",
-                options=["kWh", "Smc", "litri", "MJ", "TEP"],
-            ),
-            "Driver": st.column_config.SelectboxColumn(
-                "Driver",
-                options=driver_options,
-                help="Driver associato all'attività",
-            ),
-        },
-    )
-    st.session_state.indici_consumi = indici_df
+    with st.form("form_indici_consumi", clear_on_submit=False, border=False):
+        indici_df = st.data_editor(
+            st.session_state.indici_consumi,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="indici_consumi_editor",
+            column_config={
+                "Attività": st.column_config.TextColumn("Attività", help="Es: 'Cottura', 'Climatizzazione uffici'"),
+                "Categoria": st.column_config.SelectboxColumn(
+                    "Categoria",
+                    options=["ATTIVITA PRINCIPALI", "SERVIZI AUSILIARI", "SERVIZI GENERALI"],
+                ),
+                "Vettore": st.column_config.SelectboxColumn(
+                    "Vettore",
+                    options=["Energia Elettrica", "Gas Naturale", "Gasolio", "Altro"],
+                ),
+                "Consumo annuo": st.column_config.NumberColumn("Consumo annuo", format="%.2f"),
+                "Unità consumo": st.column_config.SelectboxColumn(
+                    "Unità consumo",
+                    options=["kWh", "Smc", "litri", "MJ", "TEP"],
+                ),
+                "Driver": st.column_config.SelectboxColumn(
+                    "Driver",
+                    options=driver_options,
+                    help="Driver associato all'attività",
+                ),
+            },
+        )
+        col_s2, _ = st.columns([1, 4])
+        if col_s2.form_submit_button("💾 Salva consumi attività", use_container_width=True, type="primary"):
+            st.session_state.indici_consumi = indici_df
+            st.success("✓ Consumi attività salvati")
+            st.rerun()
+        else:
+            indici_df = st.session_state.indici_consumi
 
     # --- CALCOLO INDICI
     st.markdown("### 3️⃣ Indici calcolati")
