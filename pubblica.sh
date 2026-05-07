@@ -32,4 +32,4 @@ git push
 
 echo ""
 echo "✅ Pubblicato! Il sito si aggiornerà in ~1 minuto."
-echo "🌐 https://diagnosi-energetica.streamlit.app"
+echo "🌐 https://progettostella.streamlit.app"
